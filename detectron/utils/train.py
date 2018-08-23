@@ -44,6 +44,7 @@ from detectron.datasets.roidb import combined_roidb_for_training
 from detectron.modeling import model_builder
 from detectron.utils import lr_policy
 from detectron.utils.training_stats import TrainingStats
+import detectron.utils.logging as logu
 import detectron.utils.env as envu
 import detectron.utils.net as nu
 
@@ -102,6 +103,10 @@ def create_model():
     start_iter = 0
     checkpoints = {}
     output_dir = get_output_dir(cfg.TRAIN.DATASETS, training=True)
+
+    # Create a softlink to the log file
+    os.symlink(logu.log_fpath, os.path.join(output_dir, os.path.basename(logu.log_fpath)))
+
     weights_file = cfg.TRAIN.WEIGHTS
     if cfg.TRAIN.AUTO_RESUME:
         # Check for the final model (indicates training already finished)

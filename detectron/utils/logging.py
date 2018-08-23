@@ -27,6 +27,10 @@ import logging
 import numpy as np
 import smtplib
 import sys
+import os
+import datetime
+
+log_fpath = None
 
 # Print lower precision floating point values than default FLOAT_REPR
 json.encoder.FLOAT_REPR = lambda o: format(o, '.6f')
@@ -72,10 +76,28 @@ def send_email(subject, body, to):
 
 
 def setup_logging(name):
+    global log_fpath
+
     FORMAT = '%(levelname)s %(filename)s:%(lineno)4d: %(message)s'
+    log_fname = "detectron_{}.log".format(datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S"))
+    log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, 'logs'))
+
+    if not os.path.exists(log_dir):
+        os.mkdir(log_dir)
+
+    log_fpath = os.path.join(log_dir, log_fname)
+    
     # Manually clear root loggers to prevent any module that may have called
     # logging.basicConfig() from blocking our logging setup
     logging.root.handlers = []
-    logging.basicConfig(level=logging.INFO, format=FORMAT, stream=sys.stdout)
+    logging.basicConfig(level=logging.INFO, filename=log_fpath, format=FORMAT)
+    
+    # Log to console also
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+
     logger = logging.getLogger(name)
+    
+    logger.addHandler(console)
+
     return logger
