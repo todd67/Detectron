@@ -31,14 +31,17 @@ import os
 import datetime
 
 log_fpath = None
+stats_fpath = None
 
 # Print lower precision floating point values than default FLOAT_REPR
 json.encoder.FLOAT_REPR = lambda o: format(o, '.6f')
 
 
 def log_json_stats(stats, sort_keys=True):
-    print('json_stats: {:s}'.format(json.dumps(stats, sort_keys=sort_keys)))
-
+    stats_str = json.dumps(stats, sort_keys=sort_keys)
+    print('json_stats: {:s}'.format(stats_str))
+    with open(stats_fpath, 'a') as f: 
+        f.write(stats_str + '\n'); 
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -76,16 +79,19 @@ def send_email(subject, body, to):
 
 
 def setup_logging(name):
-    global log_fpath
+    global log_fpath, stats_fpath
 
     FORMAT = '%(levelname)s %(filename)s:%(lineno)4d: %(message)s'
-    log_fname = "detectron_{}.log".format(datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S"))
+    now_str = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    log_fname = "detectron_{}.log".format(now_str)
+    stats_fname = "detectron_{}.stats".format(now_str)
     log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, 'logs'))
 
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
 
     log_fpath = os.path.join(log_dir, log_fname)
+    stats_fpath = os.path.join(log_dir, stats_fname)
     
     # Manually clear root loggers to prevent any module that may have called
     # logging.basicConfig() from blocking our logging setup
