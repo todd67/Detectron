@@ -105,8 +105,17 @@ def create_model():
     output_dir = get_output_dir(cfg.TRAIN.DATASETS, training=True)
 
     # Create a softlink to the log file
-    os.symlink(logu.log_fpath, os.path.join(output_dir, os.path.basename(logu.log_fpath)))
-    os.symlink(logu.stats_fpath, os.path.join(output_dir, os.path.basename(logu.stats_fpath)))
+    train_log_fpath = os.path.join(output_dir, 'train.INFO')
+    train_stats_fpath = os.path.join(output_dir, 'train.STATS')
+
+    if os.path.lexists(train_log_fpath): 
+        os.remove(train_log_fpath)
+
+    if os.path.lexists(train_stats_fpath): 
+        os.remove(train_stats_fpath)
+
+    os.symlink(logu.log_fpath, train_log_fpath) 
+    os.symlink(logu.stats_fpath, train_stats_fpath) 
 
     weights_file = cfg.TRAIN.WEIGHTS
     if cfg.TRAIN.AUTO_RESUME:
