@@ -29,6 +29,7 @@ from detectron.utils.c2 import const_fill
 from detectron.utils.c2 import gauss_fill
 from detectron.utils.net import get_group_gn
 import detectron.modeling.ResNet as ResNet
+import detectron.modeling.VGG_CNN_M_1024 as VGG_CNN_M_1024
 import detectron.utils.blob as blob_utils
 import detectron.utils.boxes as box_utils
 
@@ -87,6 +88,15 @@ def add_fpn_ResNet152_conv5_P2only_body(model):
         P2only=True
     )
 
+
+# ---------------------------------------------------------------------------- #
+# FPN with VGG
+# ---------------------------------------------------------------------------- #
+
+def add_fpn_VGG_CNN_M_1024_conv5_body(model):
+    return add_fpn_onto_conv_body(
+        model, VGG_CNN_M_1024.add_VGG_CNN_M_1024_conv5_body, fpn_level_info_VGG_CNN_M_1024_conv5
+    )
 
 # ---------------------------------------------------------------------------- #
 # Functions for bolting FPN onto a backbone architectures
@@ -565,4 +575,11 @@ def fpn_level_info_ResNet152_conv5():
         blobs=('res5_2_sum', 'res4_35_sum', 'res3_7_sum', 'res2_2_sum'),
         dims=(2048, 1024, 512, 256),
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_VGG_CNN_M_1024_conv5():
+    return FpnLevelInfo(
+        blobs=('conv5', 'norm2', 'norm1'),
+        dims=(512, 256, 96),
+        spatial_scales=(1. / 16., 1. / 8., 1. / 4.)
     )
