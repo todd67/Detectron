@@ -119,6 +119,11 @@ def add_fpn_VGG16_conv6_body(model):
         model, VGG16.add_VGG16_conv6_body, fpn_level_info_VGG16_conv6
     )
 
+def add_fpn_VGG16_conv7_body(model):
+    return add_fpn_onto_conv_body(
+        model, VGG16.add_VGG16_conv7_body, fpn_level_info_VGG16_conv7
+    )
+
 def add_fpn_VGG16_conv5_pool_body(model):
     return add_fpn_onto_conv_body(
         model, VGG16.add_VGG16_conv5_pool_body, fpn_level_info_VGG16_conv5_pool
@@ -641,5 +646,12 @@ def fpn_level_info_VGG16_conv6():
     return FpnLevelInfo(
         blobs=('conv6_2', 'conv5_3', 'conv4_3', 'conv3_3'),
         dims=(1024, 512, 512, 256),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_VGG16_conv7():
+    return FpnLevelInfo(
+        blobs=('conv8', 'fc7_conv', 'conv4_3', 'conv3_3'),
+        dims=(2048, 1024, 512, 256),
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
