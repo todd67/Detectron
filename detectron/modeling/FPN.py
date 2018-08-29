@@ -607,3 +607,10 @@ def fpn_level_info_VGG16_conv5():
         dims=(512, 512, 256),
         spatial_scales=(1. / 16., 1. / 8., 1. / 4.)
     )
+
+def fpn_level_info_VGG16_conv6():
+    return FpnLevelInfo(
+        blobs=('conv6_2', 'conv5_3', 'conv4_3', 'conv3_3'),
+        dims=(1024, 512, 512, 256),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )

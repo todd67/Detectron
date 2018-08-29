@@ -57,6 +57,15 @@ def add_VGG16_conv5_body(model):
     blob_out = model.Relu('conv5_3', 'conv5_3')
     return blob_out, 512, 1. / 16.
 
+def add_VGG16_conv6_body(model):
+    add_VGG16_conv5_body(model)
+
+    model.MaxPool('conv5_3', 'pool5', kernel=2, pad=0, stride=2)
+    model.Conv('pool5', 'conv6_1', 512, 1024, 3, pad=1, stride=1)
+    model.Relu('conv6_1', 'conv6_1')
+    model.Conv('conv6_1', 'conv6_2', 1024, 1024, 3, pad=1, stride=1)
+    blob_out = model.Relu('conv6_2', 'conv6_2')
+    return blob_out, 1024, 1. / 32.
 
 def add_VGG16_roi_fc_head(model, blob_in, dim_in, spatial_scale):
     model.RoIFeatureTransform(
