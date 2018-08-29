@@ -30,6 +30,7 @@ from detectron.utils.c2 import gauss_fill
 from detectron.utils.net import get_group_gn
 import detectron.modeling.ResNet as ResNet
 import detectron.modeling.VGG_CNN_M_1024 as VGG_CNN_M_1024
+import detectron.modeling.VGG16 as VGG16
 import detectron.utils.blob as blob_utils
 import detectron.utils.boxes as box_utils
 
@@ -96,6 +97,11 @@ def add_fpn_ResNet152_conv5_P2only_body(model):
 def add_fpn_VGG_CNN_M_1024_conv5_body(model):
     return add_fpn_onto_conv_body(
         model, VGG_CNN_M_1024.add_VGG_CNN_M_1024_conv5_body, fpn_level_info_VGG_CNN_M_1024_conv5
+    )
+
+def add_fpn_VGG16_conv5_body(model):
+    return add_fpn_onto_conv_body(
+        model, VGG16.add_VGG16_conv5_body, fpn_level_info_VGG16_conv5
     )
 
 # ---------------------------------------------------------------------------- #
@@ -581,5 +587,12 @@ def fpn_level_info_VGG_CNN_M_1024_conv5():
     return FpnLevelInfo(
         blobs=('conv5', 'norm2', 'norm1'),
         dims=(512, 256, 96),
+        spatial_scales=(1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_VGG16_conv5():
+    return FpnLevelInfo(
+        blobs=('conv5_3', 'conv4_3', 'conv3_3'),
+        dims=(512, 512, 256),
         spatial_scales=(1. / 16., 1. / 8., 1. / 4.)
     )
