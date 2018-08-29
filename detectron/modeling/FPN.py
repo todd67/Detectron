@@ -109,6 +109,11 @@ def add_fpn_VGG_CNN_M_1024_conv6_body(model):
         model, VGG_CNN_M_1024.add_VGG_CNN_M_1024_conv6_body, fpn_level_info_VGG_CNN_M_1024_conv6
     )
 
+def add_fpn_VGG_CNN_M_1024_conv8_body(model):
+    return add_fpn_onto_conv_body(
+        model, VGG_CNN_M_1024.add_VGG_CNN_M_1024_conv8_body, fpn_level_info_VGG_CNN_M_1024_conv8
+    )
+
 def add_fpn_VGG16_conv5_body(model):
     return add_fpn_onto_conv_body(
         model, VGG16.add_VGG16_conv5_body, fpn_level_info_VGG16_conv5
@@ -628,6 +633,13 @@ def fpn_level_info_VGG_CNN_M_1024_conv6():
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
 
+def fpn_level_info_VGG_CNN_M_1024_conv8():
+    return FpnLevelInfo(
+        blobs=('conv8', 'fc7_conv', 'norm2', 'norm1'),
+        dims=(1024, 512, 256, 96),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
 def fpn_level_info_VGG16_conv5():
     return FpnLevelInfo(
         blobs=('conv5_3', 'conv4_3', 'conv3_3'),
@@ -649,7 +661,7 @@ def fpn_level_info_VGG16_conv6():
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
 
-def fpn_level_info_VGG16_conv7():
+def fpn_level_info_VGG16_conv8():
     return FpnLevelInfo(
         blobs=('conv8', 'fc7_conv', 'conv4_3', 'conv3_3'),
         dims=(2048, 1024, 512, 256),

@@ -50,10 +50,18 @@ def add_VGG_CNN_M_1024_conv5_pool_body(model):
 
 def add_VGG_CNN_M_1024_conv6_body(model):
     add_VGG_CNN_M_1024_conv5_pool_body(model)
-
     model.Conv('pool5', 'conv6', 512, 1024, 3, pad=1, stride=1)
     blob_out = model.Relu('conv6', 'conv6')
+    return blob_out, 1024, 1. / 32.
 
+def add_VGG_CNN_M_1024_conv8_body(model): 
+    add_VGG_CNN_M_1024_conv5_body(model)
+    model.MaxPool('conv5', 'pool5', kernel=3, pad=1, stride=1)
+    model.Conv('pool5', 'fc6_conv', 512, 512, kernel=3, pad=6, dilation=6, stride=1)
+    model.Relu('fc6_conv', 'fc6_conv')
+    model.Conv('fc6_conv', 'fc7_conv', 512, 512, 1, stride=1)
+    model.Conv('fc7_conv', 'conv8', 512, 1024, 2, stride = 2)
+    blob_out = model.Relu('conv8', 'conv8')
     return blob_out, 1024, 1. / 32.
 
 def add_VGG_CNN_M_1024_roi_fc_head(model, blob_in, dim_in, spatial_scale):
