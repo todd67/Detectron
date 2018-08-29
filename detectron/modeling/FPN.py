@@ -99,6 +99,11 @@ def add_fpn_VGG_CNN_M_1024_conv5_body(model):
         model, VGG_CNN_M_1024.add_VGG_CNN_M_1024_conv5_body, fpn_level_info_VGG_CNN_M_1024_conv5
     )
 
+def add_fpn_VGG_CNN_M_1024_conv5_pool_body(model):
+    return add_fpn_onto_conv_body(
+        model, VGG_CNN_M_1024.add_VGG_CNN_M_1024_conv5_pool_body, fpn_level_info_VGG_CNN_M_1024_conv5_pool
+    )
+
 def add_fpn_VGG_CNN_M_1024_conv6_body(model):
     return add_fpn_onto_conv_body(
         model, VGG_CNN_M_1024.add_VGG_CNN_M_1024_conv6_body, fpn_level_info_VGG_CNN_M_1024_conv6
@@ -109,6 +114,15 @@ def add_fpn_VGG16_conv5_body(model):
         model, VGG16.add_VGG16_conv5_body, fpn_level_info_VGG16_conv5
     )
 
+def add_fpn_VGG16_conv6_body(model):
+    return add_fpn_onto_conv_body(
+        model, VGG16.add_VGG16_conv6_body, fpn_level_info_VGG16_conv6
+    )
+
+def add_fpn_VGG16_conv5_pool_body(model):
+    return add_fpn_onto_conv_body(
+        model, VGG16.add_VGG16_conv5_pool_body, fpn_level_info_VGG16_conv5_pool
+    )
 # ---------------------------------------------------------------------------- #
 # Functions for bolting FPN onto a backbone architectures
 # ---------------------------------------------------------------------------- #
@@ -595,17 +609,32 @@ def fpn_level_info_VGG_CNN_M_1024_conv5():
         spatial_scales=(1. / 16., 1. / 8., 1. / 4.)
     )
 
+def fpn_level_info_VGG_CNN_M_1024_conv5_pool():
+    return FpnLevelInfo(
+        blobs=('pool5', 'pool2', 'conv2', 'pool1'),
+        dims=(512, 256, 256, 96),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
 def fpn_level_info_VGG_CNN_M_1024_conv6():
     return FpnLevelInfo(
         blobs=('conv6', 'conv5', 'norm2', 'norm1'),
         dims=(1024, 512, 256, 96),
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
-        
+    )
+
 def fpn_level_info_VGG16_conv5():
     return FpnLevelInfo(
         blobs=('conv5_3', 'conv4_3', 'conv3_3'),
         dims=(512, 512, 256),
         spatial_scales=(1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_VGG16_conv5_pool():
+    return FpnLevelInfo(
+        blobs=('pool5', 'pool4', 'pool3', 'pool2'),
+        dims=(512, 512, 256, 128),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
 
 def fpn_level_info_VGG16_conv6():
