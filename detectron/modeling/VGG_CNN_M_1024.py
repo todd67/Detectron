@@ -24,17 +24,17 @@ from detectron.core.config import cfg
 
 
 def add_VGG_CNN_M_1024_conv5_body(model):
-    model.Conv('data', 'conv1', 3, 96, 7, pad=0, stride=2)
+    model.Conv('data', 'conv1', 3, 96, 7, pad=3, stride=2)
     model.Relu('conv1', 'conv1')
     model.LRN('conv1', 'norm1', size=5, alpha=0.0005, beta=0.75, bias=2.)
-    model.MaxPool('norm1', 'pool1', kernel=3, pad=0, stride=2)
+    model.MaxPool('norm1', 'pool1', kernel=3, pad=1, stride=2)
     model.StopGradient('pool1', 'pool1')
     # No updates at conv1 and below (norm1 and pool1 have no params,
     # so we can stop gradients before them, too)
-    model.Conv('pool1', 'conv2', 96, 256, 5, pad=0, stride=2)
+    model.Conv('pool1', 'conv2', 96, 256, 5, pad=2, stride=2)
     model.Relu('conv2', 'conv2')
     model.LRN('conv2', 'norm2', size=5, alpha=0.0005, beta=0.75, bias=2.)
-    model.MaxPool('norm2', 'pool2', kernel=3, pad=0, stride=2)
+    model.MaxPool('norm2', 'pool2', kernel=3, pad=1, stride=2)
     model.Conv('pool2', 'conv3', 256, 512, 3, pad=1, stride=1)
     model.Relu('conv3', 'conv3')
     model.Conv('conv3', 'conv4', 512, 512, 3, pad=1, stride=1)
@@ -43,6 +43,14 @@ def add_VGG_CNN_M_1024_conv5_body(model):
     blob_out = model.Relu('conv5', 'conv5')
     return blob_out, 512, 1. / 16.
 
+def add_VGG_CNN_M_1024_conv6_body(model):
+    add_VGG_CNN_M_1024_conv5_body(model)
+
+    model.MaxPool('conv5', 'pool5', kernel=3, pad=1, stride=2)
+    model.Conv('pool5', 'conv6', 512, 1024, 3, pad=1, stride=1)
+    blob_out = model.Relu('conv6', 'conv6')
+
+    return blob_out, 1024, 1. / 32.
 
 def add_VGG_CNN_M_1024_roi_fc_head(model, blob_in, dim_in, spatial_scale):
     model.RoIFeatureTransform(

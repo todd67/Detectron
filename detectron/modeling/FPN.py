@@ -98,6 +98,11 @@ def add_fpn_VGG_CNN_M_1024_conv5_body(model):
         model, VGG_CNN_M_1024.add_VGG_CNN_M_1024_conv5_body, fpn_level_info_VGG_CNN_M_1024_conv5
     )
 
+def add_fpn_VGG_CNN_M_1024_conv6_body(model):
+    return add_fpn_onto_conv_body(
+        model, VGG_CNN_M_1024.add_VGG_CNN_M_1024_conv6_body, fpn_level_info_VGG_CNN_M_1024_conv6
+    )
+
 # ---------------------------------------------------------------------------- #
 # Functions for bolting FPN onto a backbone architectures
 # ---------------------------------------------------------------------------- #
@@ -582,4 +587,11 @@ def fpn_level_info_VGG_CNN_M_1024_conv5():
         blobs=('conv5', 'norm2', 'norm1'),
         dims=(512, 256, 96),
         spatial_scales=(1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_VGG_CNN_M_1024_conv6():
+    return FpnLevelInfo(
+        blobs=('conv6', 'conv5', 'norm2', 'norm1'),
+        dims=(1024, 512, 256, 96),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
