@@ -31,6 +31,7 @@ from detectron.utils.net import get_group_gn
 import detectron.modeling.ResNet as ResNet
 import detectron.modeling.VGG_CNN_M_1024 as VGG_CNN_M_1024
 import detectron.modeling.VGG16 as VGG16
+import detectron.modeling.MobileNet as MobileNet
 import detectron.utils.blob as blob_utils
 import detectron.utils.boxes as box_utils
 
@@ -124,15 +125,21 @@ def add_fpn_VGG16_conv6_body(model):
         model, VGG16.add_VGG16_conv6_body, fpn_level_info_VGG16_conv6
     )
 
-def add_fpn_VGG16_conv7_body(model):
+def add_fpn_VGG16_conv8_body(model):
     return add_fpn_onto_conv_body(
-        model, VGG16.add_VGG16_conv7_body, fpn_level_info_VGG16_conv7
+        model, VGG16.add_VGG16_conv8_body, fpn_level_info_VGG16_conv8   
     )
 
 def add_fpn_VGG16_conv5_pool_body(model):
     return add_fpn_onto_conv_body(
         model, VGG16.add_VGG16_conv5_pool_body, fpn_level_info_VGG16_conv5_pool
     )
+
+def add_fpn_MobileNet_conv6_body(model):
+    return add_fpn_onto_conv_body(
+        model, MobileNet.add_MobileNet_conv6_body, fpn_level_info_MobileNet_conv6
+    )
+
 # ---------------------------------------------------------------------------- #
 # Functions for bolting FPN onto a backbone architectures
 # ---------------------------------------------------------------------------- #
@@ -664,6 +671,13 @@ def fpn_level_info_VGG16_conv6():
 def fpn_level_info_VGG16_conv8():
     return FpnLevelInfo(
         blobs=('conv8', 'fc7_conv', 'conv4_3', 'conv3_3'),
-        dims=(2048, 1024, 512, 256),
+        dims=(512, 1024, 512, 256),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_MobileNet_conv6():
+    return FpnLevelInfo(
+        blobs=('conv6_sep', 'conv5_5_sep', 'conv4_1_sep', 'conv3_1_sep'),
+        dims=(1024, 512, 256, 128),
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )

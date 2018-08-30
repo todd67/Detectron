@@ -79,7 +79,7 @@ def add_VGG16_conv8_body(model):
     model.Relu('fc7_conv', 'fc7_conv')
     model.Conv('fc7_conv', 'conv8', 1024, 2048, 2, stride = 2)
     blob_out = model.Relu('conv8', 'conv8')
-    return blob_out, 1024, 1. / 32.  
+    return blob_out, 2048, 1. / 32.  
 
 def add_VGG16_roi_fc_head(model, blob_in, dim_in, spatial_scale):
     model.RoIFeatureTransform(

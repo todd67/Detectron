@@ -73,7 +73,9 @@ def parse_args():
 
 
 def normalize_resnet_name(name):
+    name = name.replace('/', '_')
     if name.find('res') == 0 and name.find('res_') == -1:
+            print name
         # E.g.,
         #  res4b11_branch2c -> res4_11_branch2c
         #  res2a_branch1 -> res2_0_branch1
@@ -84,13 +86,12 @@ def normalize_resnet_name(name):
                 else ord(chunk[1]) - ord('a')
             ) +  # e.g., "a" -> 0
             name[name.find('_'):]
-        )
+        )       
     return name
-
 
 def pickle_weights(out_file_name, weights):
     blobs = {
-        normalize_resnet_name(blob.name): utils.Caffe2TensorToNumpyArray(blob)
+        normalize_name(blob.name): utils.Caffe2TensorToNumpyArray(blob)
         for blob in weights.protos
     }
     with open(out_file_name, 'w') as f:
@@ -138,8 +139,8 @@ def remove_spatial_bn_layers(caffenet, caffenet_weights):
 
     bn_tensors = []
     for (bn, scl) in zip(bn_layers[0::2], bn_layers[1::2]):
-        assert bn.name[len('bn'):] == scl.name[len('scale'):], 'Pair mismatch'
-        blob_out = 'res' + bn.name[len('bn'):] + '_bn'
+        # assert bn.name[len('bn'):] == scl.name[len('scale'):], 'Pair mismatch'
+        blob_out = bn.name # 'res' + bn.name[len('bn'):] + '_bn'
         bn_mean = np.asarray(bn.blobs[0].data)
         bn_var = np.asarray(bn.blobs[1].data)
         scale = np.asarray(scl.blobs[0].data)
@@ -171,7 +172,6 @@ def remove_layers_without_parameters(caffenet, caffenet_weights):
             if not found and name[-len('_split'):] != '_split':
                 print('Warning: layer {} not found in caffenet'.format(name))
             caffenet_weights.layer.pop(i)
-
 
 def normalize_shape(caffenet_weights):
     for layer in caffenet_weights.layer:
