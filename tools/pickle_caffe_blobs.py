@@ -75,7 +75,6 @@ def parse_args():
 def normalize_resnet_name(name):
     name = name.replace('/', '_')
     if name.find('res') == 0 and name.find('res_') == -1:
-            print name
         # E.g.,
         #  res4b11_branch2c -> res4_11_branch2c
         #  res2a_branch1 -> res2_0_branch1
@@ -91,7 +90,7 @@ def normalize_resnet_name(name):
 
 def pickle_weights(out_file_name, weights):
     blobs = {
-        normalize_name(blob.name): utils.Caffe2TensorToNumpyArray(blob)
+        normalize_resnet_name(blob.name): utils.Caffe2TensorToNumpyArray(blob)
         for blob in weights.protos
     }
     with open(out_file_name, 'w') as f:
