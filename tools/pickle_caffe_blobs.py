@@ -142,6 +142,13 @@ def remove_spatial_bn_layers(caffenet, caffenet_weights):
         blob_out = bn.name # 'res' + bn.name[len('bn'):] + '_bn'
         bn_mean = np.asarray(bn.blobs[0].data)
         bn_var = np.asarray(bn.blobs[1].data)
+        bn_count = np.asarray(bn.blobs[2].data)[0]        
+
+        if bn_count != 0. and bn_count != 1.:
+            print('Variance correction factor: {}'.format(bn_count))
+            bn_mean /= bn_count
+            bn_var /= bn_count
+
         scale = np.asarray(scl.blobs[0].data)
         bias = np.asarray(scl.blobs[1].data)
         std = np.sqrt(bn_var + 1e-5)
