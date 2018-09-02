@@ -146,6 +146,11 @@ def add_fpn_ResNet50_1by2_body(model):
         model, ThinResNet.add_ResNet50_1by2_body, fpn_level_info_ResNet50_1by2
     )
 
+def add_fpn_ResNet36_fc_body(model): 
+    return add_fpn_onto_conv_body(
+        model, ThinResNet.add_ResNet36_fc_body, fpn_level_info_ResNet36_fc
+    )
+
 # ---------------------------------------------------------------------------- #
 # Functions for bolting FPN onto a backbone architectures
 # ---------------------------------------------------------------------------- #
@@ -692,5 +697,12 @@ def fpn_level_info_ResNet50_1by2():
     return FpnLevelInfo(
         blobs=('eltwise_stage3_block2', 'eltwise_stage2_block5', 'eltwise_stage1_block3', 'eltwise_stage0_block2'),
         dims=(1024, 512, 256, 128),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_ResNet36_fc():
+    return FpnLevelInfo(
+        blobs=('eltwise_stage3_block1', 'eltwise_stage2_block1', 'eltwise_stage1_block1', 'eltwise_stage0_block1'),
+        dims=(512, 256, 128, 64),
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
