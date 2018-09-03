@@ -73,7 +73,7 @@ def parse_args():
         '--output-dir',
         dest='output_dir',
         help='directory for visualization pdfs (default: /tmp/infer_simple)',
-        default='/tmp/infer_simple',
+        default=None,
         type=str
     )
     parser.add_argument(
@@ -87,6 +87,12 @@ def parse_args():
         '--always-out',
         dest='out_when_no_box',
         help='output image even when no object is found',
+        action='store_true'
+    )
+    parser.add_argument(
+        '--benchmark',
+        dest='benchmark',
+        help='benchmark mode, will quit after getting average time',
         action='store_true'
     )
     parser.add_argument(
@@ -126,10 +132,17 @@ def main(args):
     else:
         im_list = [args.im_or_folder]
 
+    time_list = []
+
+    AVG_COUNT = 20
+
     for i, im_name in enumerate(im_list):
-        out_name = os.path.join(
-            args.output_dir, '{}'.format(os.path.basename(im_name) + '.' + args.output_ext)
-        )
+        if args.output_dir: 
+            out_name = os.path.join(
+                args.output_dir, '{}'.format(os.path.basename(im_name) + '.' + args.output_ext)
+            )
+        else: 
+            out_name = ''
         logger.info('Processing {} -> {}'.format(im_name, out_name))
         im = cv2.imread(im_name)
         timers = defaultdict(Timer)
@@ -138,7 +151,8 @@ def main(args):
             cls_boxes, cls_segms, cls_keyps = infer_engine.im_detect_all(
                 model, im, None, timers=timers
             )
-        logger.info('Inference time: {:.3f}s'.format(time.time() - t))
+        inference_time = time.time() - t
+        logger.info('Inference time: {:.3f}s'.format(inference_time))
         for k, v in timers.items():
             logger.info(' | {}: {:.3f}s'.format(k, v.average_time))
         if i == 0:
@@ -147,22 +161,37 @@ def main(args):
                 'rest (caches and auto-tuning need to warm up)'
             )
 
-        vis_utils.vis_one_image(
-            im[:, :, ::-1],  # BGR -> RGB for visualization
-            im_name,
-            args.output_dir,
-            cls_boxes,
-            cls_segms,
-            cls_keyps,
-            dataset=dummy_coco_dataset,
-            box_alpha=0.3,
-            show_class=True,
-            thresh=0.7,
-            kp_thresh=2,
-            ext=args.output_ext,
-            out_when_no_box=args.out_when_no_box
-        )
+        time_list += [inference_time]
 
+        if i == AVG_COUNT + 3 and args.benchmark: 
+            logger.info('Average inference time (over {} images): {:.3f}s'.format(
+                AVG_COUNT, 
+                sum(time_list[3:]) / float(len(time_list[3:]))
+            ))
+            break
+
+        if args.output_dir: 
+            vis_utils.vis_one_image(
+                im[:, :, ::-1],  # BGR -> RGB for visualization
+                im_name,
+                args.output_dir,
+                cls_boxes,
+                cls_segms,
+                cls_keyps,
+                dataset=dummy_coco_dataset,
+                box_alpha=0.3,
+                show_class=True,
+                thresh=0.7,
+                kp_thresh=2,
+                ext=args.output_ext,
+                out_when_no_box=args.out_when_no_box
+            )
+
+    if i > 3 and i < AVG_COUNT + 3:
+        logger.info('Average inference time (over {} images): {:.3f}s'.format(
+            AVG_COUNT, 
+            sum(time_list[3:]) / float(len(time_list[3:]))
+        ))
 
 if __name__ == '__main__':
     workspace.GlobalInit(['caffe2', '--caffe2_log_level=0'])
