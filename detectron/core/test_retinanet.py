@@ -71,12 +71,15 @@ def im_detect_bbox(model, im, timers=None):
     # Although anchors are input independent and could be precomputed,
     # recomputing them per image only brings a small overhead
     anchors = _create_cell_anchors()
-    timers['im_detect_bbox'].tic()
+    timers['im_resize'].tic()
     k_max, k_min = cfg.FPN.RPN_MAX_LEVEL, cfg.FPN.RPN_MIN_LEVEL
     A = cfg.RETINANET.SCALES_PER_OCTAVE * len(cfg.RETINANET.ASPECT_RATIOS)
     inputs = {}
     inputs['data'], im_scale, inputs['im_info'] = \
         blob_utils.get_image_blob(im, cfg.TEST.SCALE, cfg.TEST.MAX_SIZE)
+    timers['im_resize'].toc()
+
+    timers['im_detect_bbox'].tic()
     cls_probs, box_preds = [], []
     for lvl in range(k_min, k_max + 1):
         suffix = 'fpn{}'.format(lvl)
