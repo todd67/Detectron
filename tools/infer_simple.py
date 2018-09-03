@@ -90,10 +90,11 @@ def parse_args():
         action='store_true'
     )
     parser.add_argument(
-        '--benchmark',
-        dest='benchmark',
-        help='benchmark mode, will quit after getting average time',
-        action='store_true'
+        '--num',
+        dest='num',
+        help='maximum number of images to run',
+        default=0, 
+        type=int
     )
     parser.add_argument(
         'im_or_folder', help='image or folder of images', default=None
@@ -132,9 +133,10 @@ def main(args):
     else:
         im_list = [args.im_or_folder]
 
-    time_list = []
+    WARM_UP = 3
 
-    AVG_COUNT = 20
+    inference_timer = Timer()
+    timers = defaultdict(Timer)
 
     for i, im_name in enumerate(im_list):
         if args.output_dir: 
@@ -145,30 +147,30 @@ def main(args):
             out_name = ''
         logger.info('Processing {} -> {}'.format(im_name, out_name))
         im = cv2.imread(im_name)
-        timers = defaultdict(Timer)
-        t = time.time()
+        
+        inference_timer.tic()
         with c2_utils.NamedCudaScope(0):
             cls_boxes, cls_segms, cls_keyps = infer_engine.im_detect_all(
                 model, im, None, timers=timers
             )
-        inference_time = time.time() - t
-        logger.info('Inference time: {:.3f}s'.format(inference_time))
+        inference_timer.toc()
+        logger.info('Inference time: {:.3f}s'.format(inference_timer.diff))
+
         for k, v in timers.items():
-            logger.info(' | {}: {:.3f}s'.format(k, v.average_time))
+            logger.info(' | {}: {:.3f}s'.format(k, v.diff))
         if i == 0:
             logger.info(
                 ' \ Note: inference on the first image will be slower than the '
                 'rest (caches and auto-tuning need to warm up)'
             )
 
-        time_list += [inference_time]
-
-        if i == AVG_COUNT + 3 and args.benchmark: 
-            logger.info('Average inference time (over {} images): {:.3f}s'.format(
-                AVG_COUNT, 
-                sum(time_list[3:]) / float(len(time_list[3:]))
-            ))
+        if i >= args.num: 
             break
+
+        if i == WARM_UP: 
+            inference_timer.reset()
+            for k, v in timers.items(): 
+                v.reset()
 
         if args.output_dir: 
             vis_utils.vis_one_image(
@@ -187,11 +189,11 @@ def main(args):
                 out_when_no_box=args.out_when_no_box
             )
 
-    if i > 3 and i < AVG_COUNT + 3:
-        logger.info('Average inference time (over {} images): {:.3f}s'.format(
-            AVG_COUNT, 
-            sum(time_list[3:]) / float(len(time_list[3:]))
-        ))
+    logger.info('Average time: ')
+    logger.info('Inference time: {:.3f}s'.format(inference_timer.average_time))
+
+    for k, v in timers.items():
+        logger.info(' | {}: {:.3f}s'.format(k, v.average_time))
 
 if __name__ == '__main__':
     workspace.GlobalInit(['caffe2', '--caffe2_log_level=0'])
