@@ -100,8 +100,9 @@ def pickle_weights(out_file_name, weights):
 
 
 def add_missing_biases(caffenet_weights):
+    layer_types = ['Convolution', 'InnerProduct']
     for layer in caffenet_weights.layer:
-        if layer.type == 'Convolution' and len(layer.blobs) == 1:
+        if layer.type in layer_types and len(layer.blobs) == 1:
             num_filters = layer.blobs[0].shape.dim[0]
             bias_blob = caffe_pb2.BlobProto()
             bias_blob.data.extend(np.zeros(num_filters))
@@ -113,7 +114,6 @@ def add_missing_biases(caffenet_weights):
 def remove_spatial_bn_layers(caffenet, caffenet_weights):
     # Layer types associated with spatial batch norm
     remove_types = ['BatchNorm', 'Scale']
-
     def _remove_layers(net):
         for i in reversed(range(len(net.layer))):
             if net.layer[i].type in remove_types:
@@ -137,8 +137,12 @@ def remove_spatial_bn_layers(caffenet, caffenet_weights):
         return t
 
     bn_tensors = []
-    for (bn, scl) in zip(bn_layers[0::2], bn_layers[1::2]):
-        # assert bn.name[len('bn'):] == scl.name[len('scale'):], 'Pair mismatch'
+    # Check BN to see if it has 3 or 5 blobs
+    bn_type = len(bn_layers[0].blobs)
+    bn_stride = 2 if bn_type == 3 else 1
+    
+    for l in xrange(0, len(bn_layers), bn_stride): 
+        bn = bn_layers[l]
         blob_out = bn.name # 'res' + bn.name[len('bn'):] + '_bn'
         bn_mean = np.asarray(bn.blobs[0].data)
         bn_var = np.asarray(bn.blobs[1].data)
@@ -149,8 +153,14 @@ def remove_spatial_bn_layers(caffenet, caffenet_weights):
             bn_mean /= bn_count
             bn_var /= bn_count
 
-        scale = np.asarray(scl.blobs[0].data)
-        bias = np.asarray(scl.blobs[1].data)
+        if bn_type == 3:  # Scale is in the next layer
+            scl = bn_layers[l+1]
+            scale = np.asarray(scl.blobs[0].data)
+            bias = np.asarray(scl.blobs[1].data)
+        else: 
+            scale = np.asarray(bn.blobs[3].data)
+            bias = np.asarray(bn.blobs[4].data)
+
         std = np.sqrt(bn_var + 1e-5)
         new_scale = scale / std
         new_bias = bias - bn_mean * scale / std
@@ -161,6 +171,7 @@ def remove_spatial_bn_layers(caffenet, caffenet_weights):
             new_bias, bn.blobs[0].shape, blob_out + '_b'
         )
         bn_tensors.extend([new_scale_tensor, new_bias_tensor])
+
     return bn_tensors
 
 
