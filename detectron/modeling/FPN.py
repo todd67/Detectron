@@ -34,6 +34,7 @@ import detectron.modeling.VGG16 as VGG16
 import detectron.modeling.MobileNet as MobileNet
 import detectron.modeling.ThinResNet as ThinResNet
 import detectron.modeling.SqueezeNext as SqueezeNext
+import detectron.modeling.SqueezeNet as SqueezeNet
 import detectron.utils.blob as blob_utils
 import detectron.utils.boxes as box_utils
 
@@ -155,6 +156,11 @@ def add_fpn_ResNet36_fc_body(model):
 def add_fpn_SqNxt23_body(model): 
     return add_fpn_onto_conv_body(
         model, SqueezeNext.add_SqNxt23_body, fpn_level_info_SqNxt23
+    )
+
+def add_fpn_SqNet1_1_body(model): 
+    return add_fpn_onto_conv_body(
+        model, SqueezeNet.add_SqNet1_1_body, fpn_level_info_SqNet1_1
     )
 
 # ---------------------------------------------------------------------------- #
@@ -717,5 +723,12 @@ def fpn_level_info_SqNxt23():
     return FpnLevelInfo(
         blobs=('Convolution111', 'Eltwise20', 'Eltwise12', 'Eltwise6'),
         dims=(128, 256, 128, 64),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_SqNet1_1():
+    return FpnLevelInfo(
+        blobs=('pool9', 'pool5', 'pool3', 'pool1'),
+        dims=(512, 256, 128, 64),
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
