@@ -356,7 +356,7 @@ def create_input_blobs_for_net(net_def):
 
 def compare_model(model1_func, model2_func, test_image, check_blobs):
     ''' model_func(test_image, check_blobs)
-    '''
+    '''  
     cb1, cb2 = check_blobs, check_blobs
     if isinstance(check_blobs, dict):
         cb1 = check_blobs.keys()

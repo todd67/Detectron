@@ -38,6 +38,8 @@ import os
 import pprint
 import sys
 
+from collections import defaultdict
+
 import caffe2.python.utils as putils
 from caffe2.python import core, workspace
 from caffe2.proto import caffe2_pb2
@@ -50,6 +52,8 @@ from detectron.modeling import generate_anchors
 from detectron.utils.logging import setup_logging
 from detectron.utils.model_convert_utils import convert_op_in_proto
 from detectron.utils.model_convert_utils import op_filter
+from detectron.core.test_retinanet import _create_cell_anchors
+import detectron.utils.boxes as box_utils
 import detectron.utils.blob as blob_utils
 import detectron.core.test_engine as test_engine
 import detectron.utils.c2 as c2_utils
@@ -374,6 +378,12 @@ def convert_model_gpu(args, net, init_net):
     convert_op_in_proto(ret_init_net.Proto(), convert_init_op_gpu)
     convert_op_in_proto(ret_net.Proto(), convert_op_gpu)
 
+    with open('net.pbtxt', 'w') as f: 
+        f.write(str(ret_net.Proto()))
+
+    with open('init_net.pbtxt',  'w') as f: 
+        f.write(str(ret_init_net.Proto()))
+
     ret = core.InjectDeviceCopiesAmongNets([ret_init_net, ret_net])
 
     return [ret[0][1], ret[0][0]]
@@ -512,6 +522,120 @@ def _prepare_blobs(
     )
     return blobs
 
+def retina_detection_output(im):
+    """Generate RetinaNet detections on a single image."""
+
+    # Although anchors are input independent and could be precomputed,
+    # recomputing them per image only brings a small overhead
+    anchors = _create_cell_anchors()
+
+    cls_probs, box_preds = [], []
+    k_max, k_min = cfg.FPN.RPN_MAX_LEVEL, cfg.FPN.RPN_MIN_LEVEL
+    A = cfg.RETINANET.SCALES_PER_OCTAVE * len(cfg.RETINANET.ASPECT_RATIOS)
+    
+    for lvl in range(k_min, k_max + 1):
+        suffix = 'fpn{}'.format(lvl)
+        cls_probs.append(core.ScopedName('retnet_cls_prob_{}'.format(suffix)))
+        box_preds.append(core.ScopedName('retnet_bbox_pred_{}'.format(suffix)))
+
+    cls_probs = workspace.FetchBlobs(cls_probs)
+    box_preds = workspace.FetchBlobs(box_preds)
+    im_info   = workspace.FetchBlob('im_info')
+    im_scale  = im_info[0, 2]
+    im_shape  = im.shape #(int(im_info[0, 1]), int(im_info[0, 0]))
+
+    # here the boxes_all are [x0, y0, x1, y1, score]
+    boxes_all = defaultdict(list)
+
+    cnt = 0
+    for lvl in range(k_min, k_max + 1):
+        # create cell anchors array
+        stride = 2. ** lvl
+        cell_anchors = anchors[lvl]
+
+        # fetch per level probability
+        cls_prob = cls_probs[cnt]
+        box_pred = box_preds[cnt]
+        cls_prob = cls_prob.reshape((
+            cls_prob.shape[0], A, int(cls_prob.shape[1] / A),
+            cls_prob.shape[2], cls_prob.shape[3]))
+        box_pred = box_pred.reshape((
+            box_pred.shape[0], A, 4, box_pred.shape[2], box_pred.shape[3]))
+        cnt += 1
+
+        if cfg.RETINANET.SOFTMAX:
+            cls_prob = cls_prob[:, :, 1::, :, :]
+
+        cls_prob_ravel = cls_prob.ravel()
+        # In some cases [especially for very small img sizes], it's possible that
+        # candidate_ind is empty if we impose threshold 0.05 at all levels. This
+        # will lead to errors since no detections are found for this image. Hence,
+        # for lvl 7 which has small spatial resolution, we take the threshold 0.0
+        th = cfg.RETINANET.INFERENCE_TH if lvl < k_max else 0.0
+        candidate_inds = np.where(cls_prob_ravel > th)[0]
+        if (len(candidate_inds) == 0):
+            continue
+
+        pre_nms_topn = min(cfg.RETINANET.PRE_NMS_TOP_N, len(candidate_inds))
+        inds = np.argpartition(
+            cls_prob_ravel[candidate_inds], -pre_nms_topn)[-pre_nms_topn:]
+        inds = candidate_inds[inds]
+
+        inds_5d = np.array(np.unravel_index(inds, cls_prob.shape)).transpose()
+        classes = inds_5d[:, 2]
+        anchor_ids, y, x = inds_5d[:, 1], inds_5d[:, 3], inds_5d[:, 4]
+        scores = cls_prob[:, anchor_ids, classes, y, x]
+
+        boxes = np.column_stack((x, y, x, y)).astype(dtype=np.float32)
+        boxes *= stride
+        boxes += cell_anchors[anchor_ids, :]
+
+        if not cfg.RETINANET.CLASS_SPECIFIC_BBOX:
+            box_deltas = box_pred[0, anchor_ids, :, y, x]
+        else:
+            box_cls_inds = classes * 4
+            box_deltas = np.vstack(
+                [box_pred[0, ind:ind + 4, yi, xi]
+                 for ind, yi, xi in zip(box_cls_inds, y, x)]
+            )
+        pred_boxes = (
+            box_utils.bbox_transform(boxes, box_deltas)
+            if cfg.TEST.BBOX_REG else boxes)
+        pred_boxes /= im_scale
+        pred_boxes = box_utils.clip_tiled_boxes(pred_boxes, im_shape)
+        box_scores = np.zeros((pred_boxes.shape[0], 5))
+        box_scores[:, 0:4] = pred_boxes
+        box_scores[:, 4] = scores
+
+        for cls in range(1, cfg.MODEL.NUM_CLASSES):
+            inds = np.where(classes == cls - 1)[0]
+            if len(inds) > 0:
+                boxes_all[cls].extend(box_scores[inds, :])
+
+    # Combine predictions across all levels and retain the top scoring by class
+    detections = []
+    for cls, boxes in boxes_all.items():
+        cls_dets = np.vstack(boxes).astype(dtype=np.float32)
+        # do class specific nms here
+        keep = box_utils.nms(cls_dets, cfg.TEST.NMS)
+        cls_dets = cls_dets[keep, :]
+        out = np.zeros((len(keep), 6))
+        out[:, 0:5] = cls_dets
+        out[:, 5].fill(cls)
+        detections.append(out)
+
+    detections = np.vstack(detections)
+    inds = np.argsort(-detections[:, 4])
+    detections = detections[inds[0:cfg.TEST.DETECTIONS_PER_IM], :]
+
+    # detections (N, 6) format:
+    #   detections[:, :4] - boxes
+    #   detections[:, 4] - scores
+    #   detections[:, 5] - classes
+    bboxes  = detections[:, :5]
+    classes = detections[:, 5]
+
+    return classes, bboxes
 
 def run_model_pb(args, net, init_net, im, check_blobs):
     workspace.ResetWorkspace()
@@ -538,18 +662,22 @@ def run_model_pb(args, net, init_net, im, check_blobs):
 
     try:
         workspace.RunNet(net)
-        scores = workspace.FetchBlob('score_nms')
-        classids = workspace.FetchBlob('class_nms')
-        boxes = workspace.FetchBlob('bbox_nms')
+
+        if not cfg.RETINANET.RETINANET_ON:
+            scores = workspace.FetchBlob('score_nms')
+            classids = workspace.FetchBlob('class_nms')
+            boxes = workspace.FetchBlob('bbox_nms')
+
+            boxes = np.column_stack((boxes, scores))
+        else: 
+            classids, boxes = retina_detection_output(im)
+
     except Exception as e:
         print('Running pb model failed.\n{}'.format(e))
         # may not detect anything at all
         R = 0
-        scores = np.zeros((R,), dtype=np.float32)
-        boxes = np.zeros((R, 4), dtype=np.float32)
+        boxes = np.zeros((R, 5), dtype=np.float32)
         classids = np.zeros((R,), dtype=np.float32)
-
-    boxes = np.column_stack((boxes, scores))
 
     # sort the results based on score for comparision
     boxes, _, _, classids = _sort_results(
@@ -622,7 +750,12 @@ def main():
     convert_net(args, net.Proto(), blobs)
 
     # add operators for bbox
-    add_bbox_ops(args, net, blobs)
+    if not cfg.RETINANET.RETINANET_ON: 
+        add_bbox_ops(args, net, blobs)
+        empty_blobs = ['data', 'im_info']
+    else: 
+        logger.info('For RetinaNet, we do not add bbox processing ops.')
+        empty_blobs = ['data']
 
     if args.fuse_af:
         print('Fusing affine channel...')
@@ -633,7 +766,6 @@ def main():
         mutils.update_mobile_engines(net.Proto())
 
     # generate init net
-    empty_blobs = ['data', 'im_info']
     init_net = gen_init_net(net, blobs, empty_blobs)
 
     if args.device == 'gpu':
