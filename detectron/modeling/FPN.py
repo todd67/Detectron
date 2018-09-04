@@ -33,6 +33,7 @@ import detectron.modeling.VGG_CNN_M_1024 as VGG_CNN_M_1024
 import detectron.modeling.VGG16 as VGG16
 import detectron.modeling.MobileNet as MobileNet
 import detectron.modeling.ThinResNet as ThinResNet
+import detectron.modeling.SqueezeNext as SqueezeNext
 import detectron.utils.blob as blob_utils
 import detectron.utils.boxes as box_utils
 
@@ -149,6 +150,11 @@ def add_fpn_ResNet50_1by2_body(model):
 def add_fpn_ResNet36_fc_body(model): 
     return add_fpn_onto_conv_body(
         model, ThinResNet.add_ResNet36_fc_body, fpn_level_info_ResNet36_fc
+    )
+
+def add_fpn_SqNxt23_body(model): 
+    return add_fpn_onto_conv_body(
+        model, SqueezeNext.add_SqNxt23_body, fpn_level_info_SqNxt23
     )
 
 # ---------------------------------------------------------------------------- #
@@ -704,5 +710,12 @@ def fpn_level_info_ResNet36_fc():
     return FpnLevelInfo(
         blobs=('eltwise_stage3_block1', 'eltwise_stage2_block1', 'eltwise_stage1_block1', 'eltwise_stage0_block1'),
         dims=(512, 256, 128, 64),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_SqNxt23():
+    return FpnLevelInfo(
+        blobs=('Convolution111', 'Eltwise20', 'Eltwise12', 'Eltwise6'),
+        dims=(128, 256, 128, 64),
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
