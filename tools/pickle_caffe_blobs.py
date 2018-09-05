@@ -63,6 +63,13 @@ def parse_args():
         default=None,
         type=str
     )
+    parser.add_argument(
+        '--data_scale', 
+        dest='data_scale',
+        help='Input data scale',
+        default=1.0,
+        type=float
+    )
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -209,8 +216,17 @@ def normalize_shape(caffenet_weights):
                 assert len(shape) == 4
                 blob.num, blob.channels, blob.height, blob.width = shape
 
+def apply_data_scale(caffenet_weights):
+    if data_scale == 1.0: 
+        return 
 
-def load_and_convert_caffe_model(prototxt_file_name, caffemodel_file_name):
+    first_layer = caffenet_weights.layer[0]
+    assert first_layer.type == 'Convolution', 'Only support data scale if first layer is Conv'
+
+    first_layer.blobs[0].data *= data_scale
+
+
+def load_and_convert_caffe_model(prototxt_file_name, caffemodel_file_name, data_scale):
     caffenet = caffe_pb2.NetParameter()
     caffenet_weights = caffe_pb2.NetParameter()
     text_format.Merge(open(prototxt_file_name).read(), caffenet)
@@ -226,6 +242,8 @@ def load_and_convert_caffe_model(prototxt_file_name, caffemodel_file_name):
     bn_weights = remove_spatial_bn_layers(caffenet, caffenet_weights)
     # Set num, channel, height and width for blobs that use shape.dim instead
     normalize_shape(caffenet_weights)
+    # Scale the first layer weight by the data_scale
+    apply_data_scale(caffenet_weights, data_scale)
     # Translate the rest of the model
     net, pretrained_weights = caffe_translator.TranslateModel(
         caffenet, caffenet_weights
@@ -241,6 +259,6 @@ if __name__ == '__main__':
     assert os.path.exists(args.caffemodel_file_name), \
         'Weights file does not exist'
     net, weights = load_and_convert_caffe_model(
-        args.prototxt_file_name, args.caffemodel_file_name
+        args.prototxt_file_name, args.caffemodel_file_name, args.data_scale
     )
     pickle_weights(args.out_file_name, weights)
