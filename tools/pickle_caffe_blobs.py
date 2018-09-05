@@ -97,7 +97,8 @@ def normalize_resnet_name(name):
 
 def pickle_weights(out_file_name, weights):
     blobs = {
-        normalize_resnet_name(blob.name): utils.Caffe2TensorToNumpyArray(blob)
+        blob.name: utils.Caffe2TensorToNumpyArray(blob)
+#        normalize_resnet_name(blob.name): utils.Caffe2TensorToNumpyArray(blob)
         for blob in weights.protos
     }
     with open(out_file_name, 'w') as f:
@@ -216,14 +217,28 @@ def normalize_shape(caffenet_weights):
                 assert len(shape) == 4
                 blob.num, blob.channels, blob.height, blob.width = shape
 
-def apply_data_scale(caffenet_weights):
+def convert_depthwise_conv(caffenet, caffenet_weights):
+    for i in xrange(len(caffenet.layer)): 
+        if caffenet.layer[i].type == 'ConvolutionDepthwise': 
+            print('Layer {} is ConvolutionDepthwise... converting'.format(caffenet.layer[i].name))
+            caffenet.layer[i].type = 'Convolution'
+            caffenet.layer[i].convolution_param.group = \
+                caffenet.layer[i].convolution_param.num_output
+            caffenet_weights.layer[i].type = 'Convolution'
+
+def apply_data_scale(caffenet_weights, data_scale=1.0):
     if data_scale == 1.0: 
         return 
 
     first_layer = caffenet_weights.layer[0]
     assert first_layer.type == 'Convolution', 'Only support data scale if first layer is Conv'
 
-    first_layer.blobs[0].data *= data_scale
+    blob = first_layer.blobs[0]
+    weights = np.asarray(blob.data)
+
+    del blob.data[:]
+
+    blob.data.extend(weights * data_scale)
 
 
 def load_and_convert_caffe_model(prototxt_file_name, caffemodel_file_name, data_scale):
@@ -242,6 +257,8 @@ def load_and_convert_caffe_model(prototxt_file_name, caffemodel_file_name, data_
     bn_weights = remove_spatial_bn_layers(caffenet, caffenet_weights)
     # Set num, channel, height and width for blobs that use shape.dim instead
     normalize_shape(caffenet_weights)
+    # Convert ConvolutionDepthwise
+    convert_depthwise_conv(caffenet, caffenet_weights)
     # Scale the first layer weight by the data_scale
     apply_data_scale(caffenet_weights, data_scale)
     # Translate the rest of the model
