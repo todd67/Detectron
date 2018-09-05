@@ -137,6 +137,10 @@ def remove_spatial_bn_layers(caffenet, caffenet_weights):
         return t
 
     bn_tensors = []
+
+    if not bn_layers:     
+        return bn_tensors
+
     # Check BN to see if it has 3 or 5 blobs
     bn_type = len(bn_layers[0].blobs)
     bn_stride = 2 if bn_type == 3 else 1

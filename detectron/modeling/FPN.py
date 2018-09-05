@@ -728,7 +728,7 @@ def fpn_level_info_SqNxt23():
 
 def fpn_level_info_SqNet1_1():
     return FpnLevelInfo(
-        blobs=('pool9', 'pool5', 'pool3', 'pool1'),
-        dims=(512, 256, 128, 64),
+        blobs=('fire10_conv', 'fire9_concat', 'fire5_concat', 'fire3_concat'),
+        dims=(1024, 512, 256, 128),
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )

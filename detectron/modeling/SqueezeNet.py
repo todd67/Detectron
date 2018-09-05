@@ -58,6 +58,7 @@ def add_SqNet1_1_body(model):
     p = add_FireBlock(model, p, 'fire7', 384, 192)
     p = add_FireBlock(model, p, 'fire8', 384, 256)
     p = add_FireBlock(model, p, 'fire9', 512, 256)
-    p = model.MaxPool(p, 'pool9', kernel=3, pad=1, stride=2)    
 
-    return p, 512, 1. / 32.
+    p = add_ConvReLU(model, p, 'fire10_conv', 512, 1024, kernel=2, stride=2)
+
+    return p, 1024, 1. / 32.
