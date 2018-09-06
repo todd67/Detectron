@@ -32,7 +32,7 @@ from detectron.core.config import cfg
 # ---------------------------------------------------------------------------- #
 
 def add_ShuffleNet_1x_g3_body(model):
-    return add_ShuffleNet_body(model, width = 1.0, group = 3)
+    return add_ShuffleNet_body(model, width=1.0, group=3)
 
 # ---------------------------------------------------------------------------- #
 # Generic SqueezeNext components
@@ -63,14 +63,14 @@ def add_ShuffleBlock(model, counters, in_name, in_dim, out_dim, stride, group):
         out_dim -= in_dim
 
     # Main branch
-    p = add_ConvBNReLU(model, in_name, name + '_conv1', in_dim, out_dim // 4, 1, pad=0, stride=1, group=cur_group)
+    squeeze_dim = out_dim // 4
+    p = add_ConvBNReLU(model, in_name, name + '_conv1', in_dim, squeeze_dim, 1, pad=0, stride=1, group=cur_group)
 
     if is_shuffle: 
-        cur_group = group
-        p = model.net.ChannelShuffle(p, 'shuffle' + str(counters['block_id']))
+        p = model.net.ChannelShuffle(p, 'shuffle' + str(counters['block_id']), group=group)
 
-    p = add_ConvBN(model, p, name + '_conv2', out_dim // 4, out_dim // 4, 3, pad=1, stride=stride)
-    p = add_ConvBN(model, p, name + '_conv3', out_dim // 4, out_dim,      1, pad=0, stride=1, group=cur_group)
+    p = add_ConvBN(model, p, name + '_conv2', squeeze_dim, squeeze_dim, 3, pad=1, stride=stride, group=squeeze_dim) # DepthwiseConv
+    p = add_ConvBN(model, p, name + '_conv3', squeeze_dim, out_dim,     1, pad=0, stride=1,      group=group)
 
     # Combine
     if stride == 1: 
