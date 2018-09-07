@@ -13,7 +13,7 @@
 # limitations under the License.
 ##############################################################################
 
-"""Implements SqueezeNet.
+"""Implements ShuffleNet.
 
 See: https://arxiv.org/abs/1707.01083.
 """

@@ -36,6 +36,7 @@ import detectron.modeling.ThinResNet as ThinResNet
 import detectron.modeling.SqueezeNext as SqueezeNext
 import detectron.modeling.SqueezeNet as SqueezeNet
 import detectron.modeling.ShuffleNet as ShuffleNet
+import detectron.modeling.ShuffleNetV2 as ShuffleNetV2
 import detectron.utils.blob as blob_utils
 import detectron.utils.boxes as box_utils
 
@@ -167,6 +168,11 @@ def add_fpn_SqNet1_1_body(model):
 def add_fpn_ShuffleNet_1x_g3_body(model): 
     return add_fpn_onto_conv_body(
         model, ShuffleNet.add_ShuffleNet_1x_g3_body, fpn_level_info_ShuffleNet_1x_g3
+    )
+
+def add_fpn_ShuffleNetV2_half_body(model): 
+    return add_fpn_onto_conv_body(
+        model, ShuffleNetV2.add_ShuffleNetV2_half_body, fpn_level_info_ShuffleNetV2_half
     )
 
 # ---------------------------------------------------------------------------- #
@@ -743,5 +749,12 @@ def fpn_level_info_ShuffleNet_1x_g3():
     return FpnLevelInfo(
         blobs=('resx16_elewise', 'resx12_elewise', 'resx4_elewise', 'pool1'),
         dims=(960, 480, 240, 24),
+        spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
+    )
+
+def fpn_level_info_ShuffleNetV2_half():
+    return FpnLevelInfo(
+        blobs=('conv5', 'stage_3_8_concat', 'stage_2_4_concat', 'stage1_pool'),
+        dims=(1024, 96, 48, 24),
         spatial_scales=(1. / 32., 1. / 16., 1. / 8., 1. / 4.)
     )
