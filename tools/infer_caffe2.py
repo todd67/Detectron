@@ -36,7 +36,7 @@ import sys
 import time
 import numpy as np
 
-from caffe2.python import core, workspace
+from caffe2.python import core, workspace, memonger
 from caffe2.proto import caffe2_pb2
 import google.protobuf.text_format
 
@@ -107,6 +107,12 @@ def parse_args():
         '--always-out',
         dest='out_when_no_box',
         help='output image even when no object is found',
+        action='store_true'
+    )
+    parser.add_argument(
+        '--optimize',
+        dest='do_optimize',
+        help='optimize execution to reduce memory usage',
         action='store_true'
     )
     parser.add_argument(
@@ -283,15 +289,15 @@ def run_retina_net(net, im, timers):
             
     timers['run_net'].tic()
     try:
-        workspace.RunNet(net)
+        workspace.RunNetOnce(net)
     except Exception as e:
         print('Running pb model failed.\n{}'.format(e))
         exit(-1)
     timers['run_net'].toc()
 
-    timers['im_detec_box'].tic()
+    timers['im_detect_box'].tic()
     cls_boxes = retina_detection_output(im.shape, im_scale)
-    timers['im_detec_box'].toc()
+    timers['im_detect_box'].toc()
 
     return cls_boxes
 
@@ -312,10 +318,42 @@ def load_model(model_def, model_wts):
     return net, net_init
 
 
-def prepare_workspace(net, net_init): 
+def count_blobs(proto):
+    blobs = set()
+    for op in proto.op:
+        blobs = blobs.union(set(op.input)).union(set(op.output))
+    return len(blobs)
+
+
+def count_shared_blobs(proto):
+    blobs = set()
+    for op in proto.op:
+        blobs = blobs.union(set(op.input)).union(set(op.output))
+    return len([b for b in blobs if "_shared" in b])
+
+
+def prepare_workspace(net, net_init, optimize=False): 
     workspace.ResetWorkspace()
     workspace.RunNetOnce(net_init)
-    workspace.CreateNet(net, input_blobs=['data'])
+
+    if optimize: 
+        print('Optimizing memory usage...')
+        count_before = count_blobs(net.Proto())
+        optim_proto = memonger.optimize_inference_for_dag(
+            net, ["data"]
+        )
+        count_after = count_blobs(optim_proto)
+        num_shared_blobs = count_shared_blobs(optim_proto)
+
+        print('Number of blobs before optimize: {}, after: {}, shared: {}'.format(
+            count_before, count_after, num_shared_blobs
+        ))
+
+        return optim_proto
+
+    else: 
+        workspace.CreateNet(net, input_blobs=['data'])
+        return net
 
 
 def main(args):
@@ -329,7 +367,7 @@ def main(args):
         net, net_init = load_model(args.model_def, args.model_wts)
 
     # Prepare workspace
-    prepare_workspace(net, net_init)
+    net = prepare_workspace(net, net_init, optimize=args.do_optimize)
 
     dummy_coco_dataset = dummy_datasets.get_coco_dataset()
 

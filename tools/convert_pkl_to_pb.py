@@ -342,6 +342,13 @@ def add_bbox_ops(args, net, blobs):
     net.Proto().external_output.extend(new_external_outputs)
 
 
+def add_retina_output(net):
+    cls_probs, box_preds = get_retina_output_blob_names()
+
+    net.Proto().external_output.extend(cls_probs)
+    net.Proto().external_output.extend(box_preds)
+
+
 def convert_model_gpu(args, net, init_net):
     assert args.device == 'gpu'
 
@@ -522,6 +529,19 @@ def _prepare_blobs(
     )
     return blobs
 
+
+def get_retina_output_blob_names(): 
+    k_max, k_min = cfg.FPN.RPN_MAX_LEVEL, cfg.FPN.RPN_MIN_LEVEL
+
+    cls_probs, box_preds = [], []
+    for lvl in range(k_min, k_max + 1):
+        suffix = 'fpn{}'.format(lvl)
+        cls_probs.append(core.ScopedName('retnet_cls_prob_{}'.format(suffix)))
+        box_preds.append(core.ScopedName('retnet_bbox_pred_{}'.format(suffix)))
+
+    return cls_probs, box_preds
+
+
 def retina_detection_output(im):
     """Generate RetinaNet detections on a single image."""
 
@@ -529,14 +549,10 @@ def retina_detection_output(im):
     # recomputing them per image only brings a small overhead
     anchors = _create_cell_anchors()
 
-    cls_probs, box_preds = [], []
     k_max, k_min = cfg.FPN.RPN_MAX_LEVEL, cfg.FPN.RPN_MIN_LEVEL
     A = cfg.RETINANET.SCALES_PER_OCTAVE * len(cfg.RETINANET.ASPECT_RATIOS)
     
-    for lvl in range(k_min, k_max + 1):
-        suffix = 'fpn{}'.format(lvl)
-        cls_probs.append(core.ScopedName('retnet_cls_prob_{}'.format(suffix)))
-        box_preds.append(core.ScopedName('retnet_bbox_pred_{}'.format(suffix)))
+    cls_probs, box_preds = get_retina_output_blob_names()
 
     cls_probs = workspace.FetchBlobs(cls_probs)
     box_preds = workspace.FetchBlobs(box_preds)
@@ -754,6 +770,7 @@ def main():
         add_bbox_ops(args, net, blobs)
         empty_blobs = ['data', 'im_info']
     else: 
+        add_retina_output(net)
         logger.info('For RetinaNet, we do not add bbox processing ops.')
         empty_blobs = ['data']
 
