@@ -56,7 +56,7 @@ def add_ShuffleBlockV2(model, in_name, out_name, in_dim, out_dim, stride):
         model.net.Split(in_name, [left, right])
         in_dim //= 2
     else:
-        left  = add_ConvBN(model, in_name, out_name + '_conv4', in_dim, in_dim, 3, pad=1, stride=stride)
+        left  = add_ConvBN(model, in_name, out_name + '_conv4', in_dim, in_dim, 3, pad=1, stride=stride, group=in_dim)
         left  = add_ConvBNReLU(model, left, out_name + '_conv5', in_dim, out_dim, 1)
         right = in_name
 
