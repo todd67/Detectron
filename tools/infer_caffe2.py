@@ -30,26 +30,18 @@ from collections import defaultdict
 import argparse
 import cv2  # NOQA (Must import before importing caffe2 due to bug in cv2)
 import glob
-import logging
 import os
 import sys
-import time
+import logging
 import numpy as np
+import yaml
 
 from caffe2.python import core, workspace, memonger
 from caffe2.proto import caffe2_pb2
 import google.protobuf.text_format
 
-from detectron.core.config import assert_and_infer_cfg
-from detectron.core.config import cfg
-from detectron.core.config import merge_cfg_from_file
-from detectron.utils.io import cache_url
-from detectron.utils.logging import setup_logging
 from detectron.utils.timer import Timer
-import detectron.utils.blob as blob_utils
-import detectron.core.test_engine as infer_engine
 import detectron.datasets.dummy_datasets as dummy_datasets
-import detectron.utils.c2 as c2_utils
 import detectron.utils.vis as vis_utils
 import detectron.utils.boxes as box_utils
 from detectron.modeling.generate_anchors import generate_anchors
@@ -59,26 +51,18 @@ from detectron.modeling.generate_anchors import generate_anchors
 cv2.ocl.setUseOpenCL(False)
 
 
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='End-to-end inference')
     parser.add_argument(
-        '--cfg',
-        dest='cfg',
-        help='cfg model file (/path/to/model_config.yaml)',
-        default=None,
-        type=str
-    )
-    parser.add_argument(
-        '--def',
-        dest='model_def',
-        help='model definition file (/path/to/model.pbtxt)',
-        required=True,
-        type=str
-    )
-    parser.add_argument(
-        '--wts',
-        dest='model_wts',
-        help='model weights file (/path/to/model_init.pb)',
+        '--model-dir',
+        dest='model_dir',
+        help='path to exported model',
         required=True,
         type=str
     )
@@ -102,12 +86,6 @@ def parse_args():
         help='image file name extension (default: jpg)',
         default='jpg',
         type=str
-    )
-    parser.add_argument(
-        '--always-out',
-        dest='out_when_no_box',
-        help='output image even when no object is found',
-        action='store_true'
     )
     parser.add_argument(
         '--optimize',
@@ -138,15 +116,15 @@ def parse_args():
     return parser.parse_args()
 
 
-def _create_cell_anchors():
+def _create_cell_anchors(cfg):
     """
     Generate all types of anchors for all fpn levels/scales/aspect ratios.
     This function is called only once at the beginning of inference.
     """
-    k_max, k_min = cfg.FPN.RPN_MAX_LEVEL, cfg.FPN.RPN_MIN_LEVEL
-    scales_per_octave = cfg.RETINANET.SCALES_PER_OCTAVE
-    aspect_ratios = cfg.RETINANET.ASPECT_RATIOS
-    anchor_scale = cfg.RETINANET.ANCHOR_SCALE
+    k_max, k_min = cfg.RPN_MAX_LEVEL, cfg.RPN_MIN_LEVEL
+    scales_per_octave = cfg.SCALES_PER_OCTAVE
+    aspect_ratios = cfg.ASPECT_RATIOS
+    anchor_scale = cfg.ANCHOR_SCALE
     A = scales_per_octave * len(aspect_ratios)
     anchors = {}
     for lvl in range(k_min, k_max + 1):
@@ -167,16 +145,21 @@ def _create_cell_anchors():
     return anchors
     
     
-def retina_detection_output(im_shape, im_scale):
-    """Generate RetinaNet detections on a single image."""
+def _retina_im_detect_box(cfg, im_shape, im_scale):
+    """Generate RetinaNet detection boxes from workspace.
+        return: boxes_all[cls] - list of detections per class
+            Each class result is an np.array
+                box[:, 0:4]: box coordinates
+                box[:, 4]:   score   
+    """
 
     # Although anchors are input independent and could be precomputed,
     # recomputing them per image only brings a small overhead
-    anchors = _create_cell_anchors()
+    anchors = _create_cell_anchors(cfg)
 
     cls_probs, box_preds = [], []
-    k_max, k_min = cfg.FPN.RPN_MAX_LEVEL, cfg.FPN.RPN_MIN_LEVEL
-    A = cfg.RETINANET.SCALES_PER_OCTAVE * len(cfg.RETINANET.ASPECT_RATIOS)
+    k_max, k_min = cfg.RPN_MAX_LEVEL, cfg.RPN_MIN_LEVEL
+    A = cfg.SCALES_PER_OCTAVE * len(cfg.ASPECT_RATIOS)
     
     for lvl in range(k_min, k_max + 1):
         suffix = 'fpn{}'.format(lvl)
@@ -187,7 +170,7 @@ def retina_detection_output(im_shape, im_scale):
     box_preds = workspace.FetchBlobs(box_preds)
 
     # here the boxes_all are [x0, y0, x1, y1, score]
-    boxes_all = defaultdict(list)
+    boxes_all = [[] for _ in xrange(cfg.NUM_CLASSES)]
 
     cnt = 0
     for lvl in range(k_min, k_max + 1):
@@ -205,7 +188,7 @@ def retina_detection_output(im_shape, im_scale):
             box_pred.shape[0], A, 4, box_pred.shape[2], box_pred.shape[3]))
         cnt += 1
 
-        if cfg.RETINANET.SOFTMAX:
+        if cfg.SOFTMAX:
             cls_prob = cls_prob[:, :, 1::, :, :]
 
         cls_prob_ravel = cls_prob.ravel()
@@ -213,12 +196,12 @@ def retina_detection_output(im_shape, im_scale):
         # candidate_ind is empty if we impose threshold 0.05 at all levels. This
         # will lead to errors since no detections are found for this image. Hence,
         # for lvl 7 which has small spatial resolution, we take the threshold 0.0
-        th = cfg.RETINANET.INFERENCE_TH if lvl < k_max else 0.0
+        th = cfg.INFERENCE_TH if lvl < k_max else 0.0
         candidate_inds = np.where(cls_prob_ravel > th)[0]
         if (len(candidate_inds) == 0):
             continue
 
-        pre_nms_topn = min(cfg.RETINANET.PRE_NMS_TOP_N, len(candidate_inds))
+        pre_nms_topn = min(cfg.PRE_NMS_TOP_N, len(candidate_inds))
         inds = np.argpartition(
             cls_prob_ravel[candidate_inds], -pre_nms_topn)[-pre_nms_topn:]
         inds = candidate_inds[inds]
@@ -232,7 +215,7 @@ def retina_detection_output(im_shape, im_scale):
         boxes *= stride
         boxes += cell_anchors[anchor_ids, :]
 
-        if not cfg.RETINANET.CLASS_SPECIFIC_BBOX:
+        if not cfg.CLASS_SPECIFIC_BBOX:
             box_deltas = box_pred[0, anchor_ids, :, y, x]
         else:
             box_cls_inds = classes * 4
@@ -242,24 +225,33 @@ def retina_detection_output(im_shape, im_scale):
             )
         pred_boxes = (
             box_utils.bbox_transform(boxes, box_deltas)
-            if cfg.TEST.BBOX_REG else boxes)
+            if cfg.BBOX_REG else boxes)
         pred_boxes /= im_scale
         pred_boxes = box_utils.clip_tiled_boxes(pred_boxes, im_shape)
         box_scores = np.zeros((pred_boxes.shape[0], 5))
         box_scores[:, 0:4] = pred_boxes
         box_scores[:, 4] = scores
 
-        for cls in range(1, cfg.MODEL.NUM_CLASSES):
+        for cls in range(1, cfg.NUM_CLASSES):
             inds = np.where(classes == cls - 1)[0]
             if len(inds) > 0:
                 boxes_all[cls].extend(box_scores[inds, :])
 
+    return boxes_all
+
+
+def _detection_post_processing(cfg, boxes_all):
+    """Post-processing of detection output."""
+
     # Combine predictions across all levels and retain the top scoring by class
     detections = []
-    for cls, boxes in boxes_all.items():
+    for cls, boxes in enumerate(boxes_all):
+        if not boxes: 
+            continue
+            
         cls_dets = np.vstack(boxes).astype(dtype=np.float32)
         # do class specific nms here
-        keep = box_utils.nms(cls_dets, cfg.TEST.NMS)
+        keep = box_utils.nms(cls_dets, cfg.NMS)
         cls_dets = cls_dets[keep, :]
         out = np.zeros((len(keep), 6))
         out[:, 0:5] = cls_dets
@@ -268,11 +260,11 @@ def retina_detection_output(im_shape, im_scale):
 
     detections = np.vstack(detections)
     inds = np.argsort(-detections[:, 4])
-    detections = detections[inds[0:cfg.TEST.DETECTIONS_PER_IM], :]
+    detections = detections[inds[0:cfg.DETECTIONS_PER_IM], :]
 
     # Convert the detections to image cls_ format 
-    num_classes = cfg.MODEL.NUM_CLASSES
-    cls_boxes = [[] for _ in range(cfg.MODEL.NUM_CLASSES)]
+    num_classes = cfg.NUM_CLASSES
+    cls_boxes = [[] for _ in range(cfg.NUM_CLASSES)]
     for c in range(1, num_classes):
         inds = np.where(detections[:, 5] == c)[0]
         cls_boxes[c] = detections[inds, :5]
@@ -280,56 +272,76 @@ def retina_detection_output(im_shape, im_scale):
     return cls_boxes
 
 
-def run_retina_net(net, im, timers):
+def _prepare_blob(cfg, im):
+    # Subtract mean
+    im = im.astype(np.float32, copy=False)
+    im -= np.array(cfg.PIXEL_MEANS)
+    im_shape = [im.shape[0], im.shape[1]]
+
+    # Resize
+    im_scale = float(cfg.SCALE) / float(min(im_shape))
+    if np.round(im_scale * max(im_shape)) > cfg.MAX_SIZE:
+        im_scale = float(cfg.MAX_SIZE) / float(max(im_shape))
+    im = cv2.resize(im, None, None, fx=im_scale, fy=im_scale,
+                    interpolation=cv2.INTER_LINEAR)
+
+    print(im.shape)
+
+    # Pad the image so they can be divisible by a stride
+    stride = float(cfg.COARSEST_STRIDE)
+    shape = [int(np.ceil(im.shape[0] / stride) * stride),
+             int(np.ceil(im.shape[1] / stride) * stride)]
+
+    blob = np.zeros((1, shape[0], shape[1], 3), dtype=np.float32)
+    blob[0, 0:im.shape[0], 0:im.shape[1], :] = im
+
+    # Move channels (axis 3) to axis 1
+    # Axis order will become: (batch elem, channel, height, width)
+    channel_swap = (0, 3, 1, 2)
+    blob = blob.transpose(channel_swap)
+
+    return blob, im_scale
+
+
+def run_retina_net(cfg, net, im, timers):
     timers['prepare_data'].tic()
-    data, im_scale, _ = \
-        blob_utils.get_image_blob(im, cfg.TEST.SCALE, cfg.TEST.MAX_SIZE)
+    data, im_scale = _prepare_blob(cfg, im)
     workspace.FeedBlob('data', data)
     timers['prepare_data'].toc()
             
     timers['run_net'].tic()
     try:
-        workspace.RunNetOnce(net)
+        workspace.RunNet(net)
     except Exception as e:
         print('Running pb model failed.\n{}'.format(e))
         exit(-1)
     timers['run_net'].toc()
 
     timers['im_detect_box'].tic()
-    cls_boxes = retina_detection_output(im.shape, im_scale)
+    boxes_all = _retina_im_detect_box(cfg, im.shape, im_scale)
     timers['im_detect_box'].toc()
+
+    timers['post_processing'].tic()
+    cls_boxes = _detection_post_processing(cfg, boxes_all)
+    timers['post_processing'].toc()
 
     return cls_boxes
 
 
-def load_model(model_def, model_wts): 
+def load_model(model_dir): 
     netdef = caffe2_pb2.NetDef()
-    with open(model_def, 'r') as f: 
+    with open(os.path.join(model_dir, 'model.pbtxt'), 'r') as f: 
         netdef = google.protobuf.text_format.Merge(str(f.read()), netdef)
 
     net = core.Net(netdef)
 
     netdef = caffe2_pb2.NetDef()
-    with open(model_wts, 'rb') as f: 
+    with open(os.path.join(model_dir, 'model_init.pb'), 'rb') as f: 
         netdef.ParseFromString(f.read())
 
     net_init = core.Net(netdef)
 
     return net, net_init
-
-
-def count_blobs(proto):
-    blobs = set()
-    for op in proto.op:
-        blobs = blobs.union(set(op.input)).union(set(op.output))
-    return len(blobs)
-
-
-def count_shared_blobs(proto):
-    blobs = set()
-    for op in proto.op:
-        blobs = blobs.union(set(op.input)).union(set(op.output))
-    return len([b for b in blobs if "_shared" in b])
 
 
 def prepare_workspace(net, net_init, optimize=False): 
@@ -338,33 +350,20 @@ def prepare_workspace(net, net_init, optimize=False):
 
     if optimize: 
         print('Optimizing memory usage...')
-        count_before = count_blobs(net.Proto())
-        optim_proto = memonger.optimize_inference_for_dag(
-            net, ["data"]
-        )
-        count_after = count_blobs(optim_proto)
-        num_shared_blobs = count_shared_blobs(optim_proto)
+        optim_proto = memonger.optimize_inference_for_dag(net, ["data"])
+        net = core.Net(optim_proto)
 
-        print('Number of blobs before optimize: {}, after: {}, shared: {}'.format(
-            count_before, count_after, num_shared_blobs
-        ))
-
-        return optim_proto
-
-    else: 
-        workspace.CreateNet(net, input_blobs=['data'])
-        return net
-
+    workspace.CreateNet(net, input_blobs=['data'])
+    return net
 
 def main(args):
-    logger = logging.getLogger(__name__)
-
-    merge_cfg_from_file(args.cfg)
-    cfg.NUM_GPUS = 1
+    # Load cfg
+    with open(os.path.join(args.model_dir, 'model.cfg'), 'r') as f:
+        cfg = AttrDict(yaml.load(f))
     
-    # Load net
+    # Load net to GPU
     with core.DeviceScope(core.DeviceOption(caffe2_pb2.CUDA, args.gpu_id)):
-        net, net_init = load_model(args.model_def, args.model_wts)
+        net, net_init = load_model(args.model_dir)
 
     # Prepare workspace
     net = prepare_workspace(net, net_init, optimize=args.do_optimize)
@@ -386,25 +385,18 @@ def main(args):
             out_name = os.path.join(
                 args.output_dir, '{}'.format(os.path.basename(im_name) + '.' + args.output_ext)
             )
-        else: 
-            out_name = ''
-        logger.info('Processing {} -> {}'.format(im_name, out_name))
+        print('Processing {} -> {}'.format(im_name, out_name))
         im = cv2.imread(im_name)
 
         total_timer.tic()
         with core.DeviceScope(core.DeviceOption(caffe2_pb2.CUDA, args.gpu_id)):
             cls_boxes = run_retina_net(
-                net, im, timers=timers
+                cfg, net, im, timers=timers
             )
         total_timer.toc()
-        logger.info('Total time: {:.3f}s'.format(total_timer.diff))
+        print('Total time: {:.3f}s'.format(total_timer.diff))
         for k, v in timers.items():
-            logger.info(' | {}: {:.3f}s'.format(k, v.average_time))
-        if i == 0:
-            logger.info(
-                ' \ Note: inference on the first image will be slower than the '
-                'rest (caches and auto-tuning need to warm up)'
-            )
+            print(' | {}: {:.3f}s'.format(k, v.average_time))
 
         if i >= args.num: 
             break
@@ -426,17 +418,17 @@ def main(args):
                 thresh=0.7,
                 kp_thresh=2,
                 ext=args.output_ext,
-                out_when_no_box=args.out_when_no_box
+                out_when_no_box=True
             )
 
-    logger.info('Average: ')
-    logger.info('Total time: {:.3f}s'.format(total_timer.average_time))
+    print('Average: ')
+    print('Total time: {:.3f}s'.format(total_timer.average_time))
 
     for k, v in timers.items():
-        logger.info(' | {}: {:.3f}s'.format(k, v.average_time))
+        print(' | {}: {:.3f}s'.format(k, v.average_time))
 
-if __name__ == '__main__':
+if __name__ == '__main__':   
     workspace.GlobalInit(['caffe2', '--caffe2_log_level=0'])
-    setup_logging(__name__)
+    logging.basicConfig(level=logging.INFO)
     args = parse_args()
     main(args)

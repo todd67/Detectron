@@ -37,6 +37,7 @@ import numpy as np
 import os
 import pprint
 import sys
+import yaml
 
 from collections import defaultdict
 
@@ -50,6 +51,7 @@ from detectron.core.config import merge_cfg_from_file
 from detectron.core.config import merge_cfg_from_list
 from detectron.modeling import generate_anchors
 from detectron.utils.logging import setup_logging
+from detectron.utils.collections import AttrDict
 from detectron.utils.model_convert_utils import convert_op_in_proto
 from detectron.utils.model_convert_utils import op_filter
 from detectron.core.test_retinanet import _create_cell_anchors
@@ -428,7 +430,33 @@ def _save_models(all_net, all_init_net, args):
     with open(os.path.join(args.out_dir, fname + '_init.pb'), 'w') as f:
         f.write(all_init_net.Proto().SerializeToString())
 
-    _save_image_graphs(args, all_net, all_init_net)
+    # Also save inference CFG for RetinaNet
+    if cfg.RETINANET.RETINANET_ON: 
+        out_cfg = {
+            'RPN_MAX_LEVEL':        cfg.FPN.RPN_MAX_LEVEL, 
+            'RPN_MIN_LEVEL':        cfg.FPN.RPN_MIN_LEVEL,
+            'SCALES_PER_OCTAVE':    cfg.RETINANET.SCALES_PER_OCTAVE,
+            'ASPECT_RATIOS':        list(cfg.RETINANET.ASPECT_RATIOS), 
+            'ANCHOR_SCALE':         cfg.RETINANET.ANCHOR_SCALE, 
+            'SOFTMAX':              cfg.RETINANET.SOFTMAX, 
+            'INFERENCE_TH':         cfg.RETINANET.INFERENCE_TH,
+            'PRE_NMS_TOP_N':        cfg.RETINANET.PRE_NMS_TOP_N,
+            'CLASS_SPECIFIC_BBOX':  cfg.RETINANET.CLASS_SPECIFIC_BBOX,
+            'BBOX_REG':             cfg.TEST.BBOX_REG,
+            'NUM_CLASSES':          cfg.MODEL.NUM_CLASSES,
+            'NMS':                  cfg.TEST.NMS,
+            'DETECTIONS_PER_IM':    cfg.TEST.DETECTIONS_PER_IM,
+            'SCALE':                cfg.TEST.SCALE, 
+            'MAX_SIZE':             cfg.TEST.MAX_SIZE, 
+            'PIXEL_MEANS':          cfg.PIXEL_MEANS.tolist(),
+            'COARSEST_STRIDE':      cfg.FPN.COARSEST_STRIDE
+        }
+
+    yaml.add_representer(unicode, lambda dumper, data: dumper.represent_str(data.encode('utf-8')))
+    with open(os.path.join(args.out_dir, fname + '.cfg'), 'w') as f: 
+        yaml.dump(out_cfg, f)
+
+#    _save_image_graphs(args, all_net, all_init_net)
 
 
 def load_model(args):
