@@ -71,7 +71,7 @@ def parse_args():
         dest='gpu_id',
         help='select GPU',
         default=0,
-        type=str
+        type=int
     )
     parser.add_argument(
         '--output-dir',
@@ -248,7 +248,7 @@ def _detection_post_processing(cfg, boxes_all):
     for cls, boxes in enumerate(boxes_all):
         if not boxes: 
             continue
-            
+
         cls_dets = np.vstack(boxes).astype(dtype=np.float32)
         # do class specific nms here
         keep = box_utils.nms(cls_dets, cfg.NMS)
