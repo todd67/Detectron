@@ -314,7 +314,7 @@ def main(args):
     net = prepare_workspace(net, net_init, optimize=args.do_optimize)
 
     if os.path.isdir(args.im_or_folder):
-        im_list = glob.iglob(args.im_or_folder + '/*.' + args.image_ext)
+        im_list = list(glob.iglob(args.im_or_folder + '/*.' + args.image_ext))
     else:
         im_list = [args.im_or_folder]
 
