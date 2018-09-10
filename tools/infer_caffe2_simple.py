@@ -1,20 +1,5 @@
 #!/usr/bin/env python2
 
-# Copyright (c) 2017-present, Facebook, Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-##############################################################################
-
 """Perform inference on a single image or all images with a certain extension
 (e.g., .jpg) in a folder.
 
@@ -54,46 +39,13 @@ class AttrDict(dict):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='End-to-end inference')
-    parser.add_argument(
-        '--model-dir',
-        dest='model_dir',
-        help='path to exported model',
-        required=True,
-        type=str
-    )
-    parser.add_argument(
-        '--gpu',
-        dest='gpu_id',
-        help='select GPU',
-        default=0,
-        type=int
-    )
-    parser.add_argument(
-        '--image-ext',
-        dest='image_ext',
-        help='image file name extension (default: jpg)',
-        default='jpg',
-        type=str
-    )
-    parser.add_argument(
-        '--optimize',
-        dest='do_optimize',
-        help='optimize execution to reduce memory usage',
-        action='store_true'
-    )
-    parser.add_argument(
-        '--num',
-        dest='num',
-        help='maximum number of images to run',
-        default=0, 
-        type=int
-    )
-    parser.add_argument(
-        'im_or_folder', help='image or folder of images', default=None
-    )
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(1)
+    parser.add_argument('--model-dir', dest='model_dir', help='path to exported model', required=True, type=str)
+    parser.add_argument('--gpu', dest='gpu_id', help='select GPU', default=0, type=int)
+    parser.add_argument('--image-ext', dest='image_ext', help='image file name extension (default: jpg)', default='jpg', type=str)
+    parser.add_argument('--optimize', dest='do_optimize', help='optimize execution to reduce memory usage', action='store_true')
+    parser.add_argument('--num', dest='num', help='maximum number of images to run', default=0, type=int)
+    parser.add_argument('im_or_folder', help='image or folder of images', default=None)
+
     return parser.parse_args()
 
 
@@ -133,11 +85,6 @@ def _retina_im_detect_box(cfg, im_shape, im_scale):
                 box[:, 0:4]: box coordinates
                 box[:, 4]:   score   
     """
-
-    # Although anchors are input independent and could be precomputed,
-    # recomputing them per image only brings a small overhead
-    anchors = _create_cell_anchors(cfg)
-
     cls_probs, box_preds = [], []
     k_max, k_min = cfg.RPN_MAX_LEVEL, cfg.RPN_MIN_LEVEL
     A = cfg.SCALES_PER_OCTAVE * len(cfg.ASPECT_RATIOS)
@@ -157,7 +104,7 @@ def _retina_im_detect_box(cfg, im_shape, im_scale):
     for lvl in range(k_min, k_max + 1):
         # create cell anchors array
         stride = 2. ** lvl
-        cell_anchors = anchors[lvl]
+        cell_anchors = cfg.ANCHORS[lvl]
 
         # fetch per level probability
         cls_prob = cls_probs[cnt]
@@ -297,19 +244,26 @@ def run_retina_net(cfg, net, im):
 
 
 def load_model(model_dir): 
+    # Load net definition
     netdef = caffe2_pb2.NetDef()
     with open(os.path.join(model_dir, 'model.pbtxt'), 'r') as f: 
         netdef = google.protobuf.text_format.Merge(str(f.read()), netdef)
-
     net = core.Net(netdef)
 
+    # Load net weights
     netdef = caffe2_pb2.NetDef()
     with open(os.path.join(model_dir, 'model_init.pb'), 'rb') as f: 
         netdef.ParseFromString(f.read())
-
     net_init = core.Net(netdef)
 
-    return net, net_init
+    # Load model configurations
+    with open(os.path.join(model_dir, 'model.cfg'), 'r') as f:
+        cfg = AttrDict(yaml.load(f))
+    
+    # Pre-compute anchors
+    cfg.ANCHORS = _create_cell_anchors(cfg)
+
+    return cfg, net, net_init
 
 
 def prepare_workspace(net, net_init, optimize=False): 
@@ -323,6 +277,7 @@ def prepare_workspace(net, net_init, optimize=False):
 
     workspace.CreateNet(net, input_blobs=['data'])
     return net
+
 
 def print_detections(results, thresh): 
     # Hard-coded class names for COCO dataset
@@ -349,14 +304,11 @@ def print_detections(results, thresh):
         if score >= thresh: 
             print('\tlabel={:15}  score={:.4f}  box={}'.format(lbl[:15], score, box))
 
+
 def main(args):
-    # Load cfg
-    with open(os.path.join(args.model_dir, 'model.cfg'), 'r') as f:
-        cfg = AttrDict(yaml.load(f))
-    
     # Load net to GPU
     with core.DeviceScope(core.DeviceOption(caffe2_pb2.CUDA, args.gpu_id)):
-        net, net_init = load_model(args.model_dir)
+        cfg, net, net_init = load_model(args.model_dir)
 
     # Prepare workspace
     net = prepare_workspace(net, net_init, optimize=args.do_optimize)
@@ -366,6 +318,9 @@ def main(args):
     else:
         im_list = [args.im_or_folder]
 
+    if args.num: 
+        im_list = im_list[:args.num]
+
     for i, im_name in enumerate(im_list):
         print('Processing', im_name)
         im = cv2.imread(im_name)
@@ -374,10 +329,6 @@ def main(args):
             results = run_retina_net(cfg, net, im)
 
         print_detections(results, thresh=0.7)
-
-        if i >= args.num: 
-            break
-
 
 if __name__ == '__main__':   
     workspace.GlobalInit(['caffe2', '--caffe2_log_level=0'])
