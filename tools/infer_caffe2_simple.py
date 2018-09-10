@@ -318,9 +318,6 @@ def main(args):
     else:
         im_list = [args.im_or_folder]
 
-    if args.num: 
-        im_list = im_list[:args.num]
-
     for i, im_name in enumerate(im_list):
         print('Processing', im_name)
         im = cv2.imread(im_name)
@@ -329,6 +326,10 @@ def main(args):
             results = run_retina_net(cfg, net, im)
 
         print_detections(results, thresh=0.7)
+
+        if args.num and i >= args.num-1: 
+            break
+
 
 if __name__ == '__main__':   
     workspace.GlobalInit(['caffe2', '--caffe2_log_level=0'])
