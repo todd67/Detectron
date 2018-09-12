@@ -70,6 +70,13 @@ def parse_args():
         default=1.0,
         type=float
     )
+    parser.add_argument(
+        '--data_bias', 
+        dest='data_bias',
+        help='Input data bias',
+        default=0.0,
+        type=float
+    )
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -78,9 +85,10 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+def normalize_name(name): 
+    return name.replace('/', '_')
 
 def normalize_resnet_name(name):
-    name = name.replace('/', '_')
     if name.find('res') == 0 and name.find('res_') == -1:
         # E.g.,
         #  res4b11_branch2c -> res4_11_branch2c
@@ -97,7 +105,7 @@ def normalize_resnet_name(name):
 
 def pickle_weights(out_file_name, weights):
     blobs = {
-        blob.name: utils.Caffe2TensorToNumpyArray(blob)
+        normalize_name(blob.name): utils.Caffe2TensorToNumpyArray(blob)
 #        normalize_resnet_name(blob.name): utils.Caffe2TensorToNumpyArray(blob)
         for blob in weights.protos
     }
@@ -226,22 +234,35 @@ def convert_depthwise_conv(caffenet, caffenet_weights):
                 caffenet.layer[i].convolution_param.num_output
             caffenet_weights.layer[i].type = 'Convolution'
 
-def apply_data_scale(caffenet_weights, data_scale=1.0):
-    if data_scale == 1.0: 
+def apply_data_transform(caffenet_weights, data_scale=1.0, data_bias=0.0):
+    if data_scale == 1.0 and data_bias == 0.0: 
         return 
 
     first_layer = caffenet_weights.layer[0]
-    assert first_layer.type == 'Convolution', 'Only support data scale if first layer is Conv'
+    print('First layer:', first_layer.name, first_layer.type)
 
-    blob = first_layer.blobs[0]
-    weights = np.asarray(blob.data)
+    if first_layer.type == 'Convolution': 
+        weight_blob = first_layer.blobs[0]
+        weight = np.asarray(weight_blob.data)
+        del weight_blob.data[:]
+        weight_blob.data.extend(weight * data_scale)
+    
+        bias_blob = first_layer.blobs[1]
+        bias = np.asarray(bias_blob.data)
+        del bias_blob.data[:]
+        bias_blob.data.extend(bias + data_bias)
+    elif first_layer.type == 'BatchNorm': 
+        mean_blob = first_layer.blobs[0]
+        mean = np.asarray(mean_blob.data)
+        del mean_blob.data[:]
+        var_blob = first_layer.blobs[1]
+        var = np.asarray(var_blob.data)
+        del var_blob.data[:]
 
-    del blob.data[:]
+        mean_blob.data.extend((mean - data_bias) / data_scale)
+        var_blob.data.extend(var / (data_scale ** 2))
 
-    blob.data.extend(weights * data_scale)
-
-
-def load_and_convert_caffe_model(prototxt_file_name, caffemodel_file_name, data_scale):
+def load_and_convert_caffe_model(prototxt_file_name, caffemodel_file_name, data_scale=1.0, data_bias=0.0):
     caffenet = caffe_pb2.NetParameter()
     caffenet_weights = caffe_pb2.NetParameter()
     text_format.Merge(open(prototxt_file_name).read(), caffenet)
@@ -251,6 +272,8 @@ def load_and_convert_caffe_model(prototxt_file_name, caffemodel_file_name, data_
     add_missing_biases(caffenet_weights)
     # We only care about getting parameters, so remove layers w/o parameters
     remove_layers_without_parameters(caffenet, caffenet_weights)
+    # Data scale and bias 
+    apply_data_transform(caffenet_weights, data_scale, data_bias)
     # BatchNorm is not implemented in the translator *and* we need to fold Scale
     # layers into the new C2 SpatialBN op, hence we remove the batch norm layers
     # and apply custom translations code
@@ -259,8 +282,6 @@ def load_and_convert_caffe_model(prototxt_file_name, caffemodel_file_name, data_
     normalize_shape(caffenet_weights)
     # Convert ConvolutionDepthwise
     convert_depthwise_conv(caffenet, caffenet_weights)
-    # Scale the first layer weight by the data_scale
-    apply_data_scale(caffenet_weights, data_scale)
     # Translate the rest of the model
     net, pretrained_weights = caffe_translator.TranslateModel(
         caffenet, caffenet_weights
@@ -276,6 +297,7 @@ if __name__ == '__main__':
     assert os.path.exists(args.caffemodel_file_name), \
         'Weights file does not exist'
     net, weights = load_and_convert_caffe_model(
-        args.prototxt_file_name, args.caffemodel_file_name, args.data_scale
+        args.prototxt_file_name, args.caffemodel_file_name, 
+        args.data_scale, args.data_bias
     )
     pickle_weights(args.out_file_name, weights)
