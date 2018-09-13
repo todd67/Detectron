@@ -100,15 +100,22 @@ def add_retinanet_blobs(blobs, im_scales, roidb, image_width, image_height):
 
     blobs['retnet_fg_num'], blobs['retnet_bg_num'] = 0.0, 0.0
     for im_i, entry in enumerate(roidb):
-        scale = im_scales[im_i]
-        im_height = np.round(entry['height'] * scale)
-        im_width = np.round(entry['width'] * scale)
         gt_inds = np.where(
             (entry['gt_classes'] > 0) & (entry['is_crowd'] == 0))[0]
         assert len(gt_inds) > 0, \
             'Empty ground truth empty for image is not allowed. Please check.'
 
-        gt_rois = entry['boxes'][gt_inds, :] * scale
+        scale = im_scales[im_i]
+        if cfg.TRAIN.SQUASH: 
+            im_height = np.round(entry['height'] * scale[0])
+            im_width = np.round(entry['width'] * scale[1])
+            gt_rois = entry['boxes'][gt_inds, :] * np.array([[im_scale[1], im_scale[0], im_scale[1], im_scale[0]]])
+            scale = np.max(scale)
+        else:  
+            im_height = np.round(entry['height'] * scale)
+            im_width = np.round(entry['width'] * scale)
+            gt_rois = entry['boxes'][gt_inds, :] * scale
+
         gt_classes = entry['gt_classes'][gt_inds]
 
         im_info = np.array([[im_height, im_width, scale]], dtype=np.float32)

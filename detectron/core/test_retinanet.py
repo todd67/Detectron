@@ -76,7 +76,7 @@ def im_detect_bbox(model, im, timers=None):
     A = cfg.RETINANET.SCALES_PER_OCTAVE * len(cfg.RETINANET.ASPECT_RATIOS)
     inputs = {}
     inputs['data'], im_scale, inputs['im_info'] = \
-        blob_utils.get_image_blob(im, cfg.TEST.SCALE, cfg.TEST.MAX_SIZE)
+        blob_utils.get_image_blob(im, cfg.TEST.SCALE, cfg.TEST.MAX_SIZE, cfg.TEST.SQUASH)
     timers['im_resize'].toc()
 
     timers['im_detect_bbox'].tic()
@@ -149,7 +149,12 @@ def im_detect_bbox(model, im, timers=None):
         pred_boxes = (
             box_utils.bbox_transform(boxes, box_deltas)
             if cfg.TEST.BBOX_REG else boxes)
-        pred_boxes /= im_scale
+
+        if cfg.TEST.SQUASH:      
+            pred_boxes /= np.array([[im_scale[1], im_scale[0], im_scale[1], im_scale[0]]])
+        else: 
+            pred_boxes /= im_scale
+
         pred_boxes = box_utils.clip_tiled_boxes(pred_boxes, im.shape)
         box_scores = np.zeros((pred_boxes.shape[0], 5))
         box_scores[:, 0:4] = pred_boxes

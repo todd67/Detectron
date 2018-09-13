@@ -85,6 +85,9 @@ __C.TRAIN.DATASETS = ()
 # each training image (i.e., scale jitter data augmentation)
 __C.TRAIN.SCALES = (600, )
 
+# Squash image, ignore aspect ratio
+__C.TRAIN.SQUASH = False
+
 # Max pixel size of the longest side of a scaled input image
 __C.TRAIN.MAX_SIZE = 1000
 
@@ -228,6 +231,9 @@ __C.TEST.DATASETS = ()
 
 # Scale to use during testing
 __C.TEST.SCALE = 600
+
+# Squash image, ignore aspect ratio
+__C.TEST.SQUASH = False
 
 # Max pixel size of the longest side of a scaled input image
 __C.TEST.MAX_SIZE = 1000

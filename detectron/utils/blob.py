@@ -37,7 +37,7 @@ from caffe2.proto import caffe2_pb2
 from detectron.core.config import cfg
 
 
-def get_image_blob(im, target_scale, target_max_size):
+def get_image_blob(im, target_scale, target_max_size, do_squash):
     """Convert an image into a network input.
 
     Arguments:
@@ -45,11 +45,11 @@ def get_image_blob(im, target_scale, target_max_size):
 
     Returns:
         blob (ndarray): a data blob holding an image pyramid
-        im_scale (float): image scale (target size) / (original size)
+        im_scale (float): image scale (target size) / (original size); 2 scales in case of squash
         im_info (ndarray)
     """
     processed_im, im_scale = prep_im_for_blob(
-        im, cfg.PIXEL_MEANS, target_scale, target_max_size
+        im, cfg.PIXEL_MEANS, target_scale, target_max_size, do_squash
     )
     blob = im_list_to_blob(processed_im)
     # NOTE: this height and width may be larger than actual scaled input image
@@ -97,31 +97,42 @@ def im_list_to_blob(ims):
     return blob
 
 
-def prep_im_for_blob(im, pixel_means, target_size, max_size):
+def prep_im_for_blob(im, pixel_means, target_size, max_size, do_squash=False):
     """Prepare an image for use as a network input blob. Specially:
       - Subtract per-channel pixel mean
       - Convert to float32
       - Rescale to each of the specified target size (capped at max_size)
+      - If do_squash=True, ignore aspect ratio and just resize to target_size
     Returns a list of transformed images, one for each target size. Also returns
     the scale factors that were used to compute each returned image.
     """
     im = im.astype(np.float32, copy=False)
     im -= pixel_means
     im_shape = im.shape
-    im_size_min = np.min(im_shape[0:2])
-    im_size_max = np.max(im_shape[0:2])
-    im_scale = float(target_size) / float(im_size_min)
-    # Prevent the biggest axis from being more than max_size
-    if np.round(im_scale * im_size_max) > max_size:
-        im_scale = float(max_size) / float(im_size_max)
-    im = cv2.resize(
-        im,
-        None,
-        None,
-        fx=im_scale,
-        fy=im_scale,
-        interpolation=cv2.INTER_LINEAR
-    )
+
+    if not do_squash: 
+        im_size_min = np.min(im_shape[0:2])
+        im_size_max = np.max(im_shape[0:2])
+        im_scale = float(target_size) / float(im_size_min)
+        # Prevent the biggest axis from being more than max_size
+        if np.round(im_scale * im_size_max) > max_size:
+            im_scale = float(max_size) / float(im_size_max)
+        im = cv2.resize(
+            im,
+            None,
+            None,
+            fx=im_scale,
+            fy=im_scale,
+            interpolation=cv2.INTER_LINEAR
+        )
+    else: 
+        im_scale = float(target_size) / np.array(im_shape[0:2], dtype=np.float32)
+        im = cv2.resize(
+            im,
+            (target_size, target_size),
+            interpolation=cv2.INTER_LINEAR
+        )
+
     return im, im_scale
 
 
