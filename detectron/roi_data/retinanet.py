@@ -109,7 +109,7 @@ def add_retinanet_blobs(blobs, im_scales, roidb, image_width, image_height):
         if cfg.TRAIN.SQUASH: 
             im_height = np.round(entry['height'] * scale[0])
             im_width = np.round(entry['width'] * scale[1])
-            gt_rois = entry['boxes'][gt_inds, :] * np.array([[im_scale[1], im_scale[0], im_scale[1], im_scale[0]]])
+            gt_rois = entry['boxes'][gt_inds, :] * np.array([[scale[1], scale[0], scale[1], scale[0]]])
             scale = np.max(scale)
         else:  
             im_height = np.round(entry['height'] * scale)
