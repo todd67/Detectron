@@ -44,7 +44,6 @@ from detectron.utils.timer import Timer
 import detectron.datasets.dummy_datasets as dummy_datasets
 import detectron.utils.vis as vis_utils
 import detectron.utils.boxes as box_utils
-from detectron.modeling.generate_anchors import generate_anchors
 
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
 # thread safe and causes unwanted GPU memory allocations.
@@ -114,36 +113,7 @@ def parse_args():
         parser.print_help()
         sys.exit(1)
     return parser.parse_args()
-
-
-def _create_cell_anchors(cfg):
-    """
-    Generate all types of anchors for all fpn levels/scales/aspect ratios.
-    This function is called only once at the beginning of inference.
-    """
-    k_max, k_min = cfg.RPN_MAX_LEVEL, cfg.RPN_MIN_LEVEL
-    scales_per_octave = cfg.SCALES_PER_OCTAVE
-    aspect_ratios = cfg.ASPECT_RATIOS
-    anchor_scale = cfg.ANCHOR_SCALE
-    A = scales_per_octave * len(aspect_ratios)
-    anchors = {}
-    for lvl in range(k_min, k_max + 1):
-        # create cell anchors array
-        stride = 2. ** lvl
-        cell_anchors = np.zeros((A, 4))
-        a = 0
-        for octave in range(scales_per_octave):
-            octave_scale = 2 ** (octave / float(scales_per_octave))
-            for aspect in aspect_ratios:
-                anchor_sizes = (stride * octave_scale * anchor_scale, )
-                anchor_aspect_ratios = (aspect, )
-                cell_anchors[a, :] = generate_anchors(
-                    stride=stride, sizes=anchor_sizes,
-                    aspect_ratios=anchor_aspect_ratios)
-                a += 1
-        anchors[lvl] = cell_anchors
-    return anchors
-    
+ 
     
 def _retina_im_detect_box(cfg, im_shape, im_scale):
     """Generate RetinaNet detection boxes from workspace.
@@ -152,13 +122,8 @@ def _retina_im_detect_box(cfg, im_shape, im_scale):
                 box[:, 0:4]: box coordinates
                 box[:, 4]:   score   
     """
-
-    # Although anchors are input independent and could be precomputed,
-    # recomputing them per image only brings a small overhead
-    anchors = _create_cell_anchors(cfg)
-
     cls_probs, box_preds = [], []
-    k_max, k_min = cfg.RPN_MAX_LEVEL, cfg.RPN_MIN_LEVEL
+    k_min, k_max = min(cfg.ANCHORS.keys()), max(cfg.ANCHORS.keys())-1    
     A = cfg.SCALES_PER_OCTAVE * len(cfg.ASPECT_RATIOS)
     
     for lvl in range(k_min, k_max + 1):
@@ -176,7 +141,7 @@ def _retina_im_detect_box(cfg, im_shape, im_scale):
     for lvl in range(k_min, k_max + 1):
         # create cell anchors array
         stride = 2. ** lvl
-        cell_anchors = anchors[lvl]
+        cell_anchors = cfg.ANCHORS[lvl]
 
         # fetch per level probability
         cls_prob = cls_probs[cnt]
@@ -341,7 +306,13 @@ def load_model(model_dir):
 
     net_init = core.Net(netdef)
 
-    return net, net_init
+    # Load model configurations
+    with open(os.path.join(model_dir, 'model.cfg'), 'r') as f:
+        cfg = AttrDict(yaml.load(f))
+
+    cfg.ANCHORS = {k: np.array(v) for k, v in cfg.ANCHORS.iteritems()}
+
+    return cfg, net, net_init
 
 
 def prepare_workspace(net, net_init, optimize=False): 
@@ -357,13 +328,9 @@ def prepare_workspace(net, net_init, optimize=False):
     return net
 
 def main(args):
-    # Load cfg
-    with open(os.path.join(args.model_dir, 'model.cfg'), 'r') as f:
-        cfg = AttrDict(yaml.load(f))
-    
     # Load net to GPU
     with core.DeviceScope(core.DeviceOption(caffe2_pb2.CUDA, args.gpu_id)):
-        net, net_init = load_model(args.model_dir)
+        cfg, net, net_init = load_model(args.model_dir)
 
     # Prepare workspace
     net = prepare_workspace(net, net_init, optimize=args.do_optimize)

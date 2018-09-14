@@ -25,7 +25,6 @@ from caffe2.proto import caffe2_pb2
 import google.protobuf.text_format
 
 import detectron.utils.boxes as box_utils
-from detectron.modeling.generate_anchors import generate_anchors
 
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
 # thread safe and causes unwanted GPU memory allocations.
@@ -49,35 +48,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def _create_cell_anchors(cfg):
-    """
-    Generate all types of anchors for all fpn levels/scales/aspect ratios.
-    This function is called only once at the beginning of inference.
-    """
-    k_max, k_min = cfg.RPN_MAX_LEVEL, cfg.RPN_MIN_LEVEL
-    scales_per_octave = cfg.SCALES_PER_OCTAVE
-    aspect_ratios = cfg.ASPECT_RATIOS
-    anchor_scale = cfg.ANCHOR_SCALE
-    A = scales_per_octave * len(aspect_ratios)
-    anchors = {}
-    for lvl in range(k_min, k_max + 1):
-        # create cell anchors array
-        stride = 2. ** lvl
-        cell_anchors = np.zeros((A, 4))
-        a = 0
-        for octave in range(scales_per_octave):
-            octave_scale = 2 ** (octave / float(scales_per_octave))
-            for aspect in aspect_ratios:
-                anchor_sizes = (stride * octave_scale * anchor_scale, )
-                anchor_aspect_ratios = (aspect, )
-                cell_anchors[a, :] = generate_anchors(
-                    stride=stride, sizes=anchor_sizes,
-                    aspect_ratios=anchor_aspect_ratios)
-                a += 1
-        anchors[lvl] = cell_anchors
-    return anchors
-    
-    
 def _retina_im_detect_box(cfg, im_shape, im_scale):
     """Generate RetinaNet detection boxes from workspace.
         return: boxes_all[cls] - list of detections per class
@@ -86,7 +56,7 @@ def _retina_im_detect_box(cfg, im_shape, im_scale):
                 box[:, 4]:   score   
     """
     cls_probs, box_preds = [], []
-    k_max, k_min = cfg.RPN_MAX_LEVEL, cfg.RPN_MIN_LEVEL
+    k_min, k_max = min(cfg.ANCHORS.keys()), max(cfg.ANCHORS.keys())-1    
     A = cfg.SCALES_PER_OCTAVE * len(cfg.ASPECT_RATIOS)
     
     for lvl in range(k_min, k_max + 1):
@@ -260,8 +230,7 @@ def load_model(model_dir):
     with open(os.path.join(model_dir, 'model.cfg'), 'r') as f:
         cfg = AttrDict(yaml.load(f))
     
-    # Pre-compute anchors
-    cfg.ANCHORS = _create_cell_anchors(cfg)
+    cfg.ANCHORS = {k: np.array(v) for k, v in cfg.ANCHORS.iteritems()}
 
     return cfg, net, net_init
 

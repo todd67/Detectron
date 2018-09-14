@@ -433,11 +433,8 @@ def _save_models(all_net, all_init_net, args):
     # Also save inference CFG for RetinaNet
     if cfg.RETINANET.RETINANET_ON: 
         out_cfg = {
-            'RPN_MAX_LEVEL':        cfg.FPN.RPN_MAX_LEVEL, 
-            'RPN_MIN_LEVEL':        cfg.FPN.RPN_MIN_LEVEL,
             'SCALES_PER_OCTAVE':    cfg.RETINANET.SCALES_PER_OCTAVE,
             'ASPECT_RATIOS':        list(cfg.RETINANET.ASPECT_RATIOS), 
-            'ANCHOR_SCALE':         cfg.RETINANET.ANCHOR_SCALE, 
             'SOFTMAX':              cfg.RETINANET.SOFTMAX, 
             'INFERENCE_TH':         cfg.RETINANET.INFERENCE_TH,
             'PRE_NMS_TOP_N':        cfg.RETINANET.PRE_NMS_TOP_N,
@@ -449,7 +446,8 @@ def _save_models(all_net, all_init_net, args):
             'SCALE':                cfg.TEST.SCALE, 
             'MAX_SIZE':             cfg.TEST.MAX_SIZE, 
             'PIXEL_MEANS':          cfg.PIXEL_MEANS.tolist(),
-            'COARSEST_STRIDE':      cfg.FPN.COARSEST_STRIDE
+            'COARSEST_STRIDE':      cfg.FPN.COARSEST_STRIDE,
+            'ANCHORS':              {k: v.tolist() for k, v in _create_cell_anchors().iteritems()}
         }
 
     yaml.add_representer(unicode, lambda dumper, data: dumper.represent_str(data.encode('utf-8')))
