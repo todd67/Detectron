@@ -92,6 +92,9 @@ def add_Shortcut(model, in_name, out_name, in_dim, out_dim, shortcut, main_branc
     return add_EltwiseRelu(model, [shortcut_p, p], out_name)
 
 def add_ResNet_body(model, blocks, num_output_stage1, main_branch='bottleneck'): 
+    freeze_at = cfg.TRAIN.FREEZE_AT
+    assert freeze_at in [0, 2, 3, 4, 5]
+
     # Stage 1
     p = add_ConvBNReLU(model, 'data', '1', 3, 64, kernel=7, pad=3, stride=2)
     p = model.MaxPool(p, 'pool1', kernel=3, pad=1, stride=2)    
@@ -118,5 +121,8 @@ def add_ResNet_body(model, blocks, num_output_stage1, main_branch='bottleneck'):
                 shortcut=shortcut, main_branch=main_branch, stride=stride) 
 
             prev_num_output = curr_num_output
+
+        if freeze_at == stage + 2: 
+            model.StopGradient(p, p)
 
     return p, prev_num_output, 1. / 32.
