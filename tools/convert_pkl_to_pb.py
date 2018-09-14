@@ -450,6 +450,7 @@ def _save_models(all_net, all_init_net, args):
             'DETECTIONS_PER_IM':    cfg.TEST.DETECTIONS_PER_IM,
             'SCALE':                cfg.TEST.SCALE, 
             'MAX_SIZE':             cfg.TEST.MAX_SIZE, 
+            'SQUASH':               cfg.TEST.SQUASH,
             'PIXEL_MEANS':          cfg.PIXEL_MEANS.tolist(),
             'COARSEST_STRIDE':      cfg.FPN.COARSEST_STRIDE,
             'ANCHORS':              {k: v.tolist() for k, v in _create_cell_anchors().iteritems()}
@@ -648,7 +649,7 @@ def retina_detection_output(im):
         pred_boxes = (
             box_utils.bbox_transform(boxes, box_deltas)
             if cfg.TEST.BBOX_REG else boxes)
-        pred_boxes /= im_scale
+        pred_boxes /= np.array([[im_scale[1], im_scale[0], im_scale[1], im_scale[0]]])
         pred_boxes = box_utils.clip_tiled_boxes(pred_boxes, im_shape)
         box_scores = np.zeros((pred_boxes.shape[0], 5))
         box_scores[:, 0:4] = pred_boxes

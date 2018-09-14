@@ -20,7 +20,7 @@ import logging
 import numpy as np
 import yaml
 
-from caffe2.python import core, workspace, memonger
+from caffe2.python import core, workspace
 from caffe2.proto import caffe2_pb2
 import google.protobuf.text_format
 
@@ -41,7 +41,6 @@ def parse_args():
     parser.add_argument('--model-dir', dest='model_dir', help='path to exported model', required=True, type=str)
     parser.add_argument('--gpu', dest='gpu_id', help='select GPU', default=0, type=int)
     parser.add_argument('--image-ext', dest='image_ext', help='image file name extension (default: jpg)', default='jpg', type=str)
-    parser.add_argument('--optimize', dest='do_optimize', help='optimize execution to reduce memory usage', action='store_true')
     parser.add_argument('--num', dest='num', help='maximum number of images to run', default=0, type=int)
     parser.add_argument('im_or_folder', help='image or folder of images', default=None)
 
@@ -124,7 +123,7 @@ def _retina_im_detect_box(cfg, im_shape, im_scale):
         pred_boxes = (
             box_utils.bbox_transform(boxes, box_deltas)
             if cfg.BBOX_REG else boxes)
-        pred_boxes /= im_scale
+        pred_boxes /= np.array([[im_scale[1], im_scale[0], im_scale[1], im_scale[0]]])
         pred_boxes = box_utils.clip_tiled_boxes(pred_boxes, im_shape)
         box_scores = np.zeros((pred_boxes.shape[0], 5))
         box_scores[:, 0:4] = pred_boxes
@@ -175,10 +174,18 @@ def _prepare_blob(cfg, im):
     im_shape = [im.shape[0], im.shape[1]]
 
     # Resize
-    im_scale = float(cfg.SCALE) / float(min(im_shape))
-    if np.round(im_scale * max(im_shape)) > cfg.MAX_SIZE:
-        im_scale = float(cfg.MAX_SIZE) / float(max(im_shape))
-    im = cv2.resize(im, None, None, fx=im_scale, fy=im_scale,
+    if cfg.SQUASH: 
+        im_scale = float(cfg.SCALE) / np.array(im_shape[0:2], dtype=np.float32)
+    else: 
+        im_size_min = np.min(im_shape[0:2])
+        im_size_max = np.max(im_shape[0:2])
+        im_scale = float(cfg.SCALE) / float(im_size_min)
+        im_scale = np.array([im_scale, im_scale])
+        # Prevent the biggest axis from being more than max_size
+        if np.round(im_scale * im_size_max) > cfg.MAX_SIZE:
+            im_scale = float(cfg.MAX_SIZE) / float(im_size_max)
+
+    im = cv2.resize(im, None, None, fx=im_scale[1], fy=im_scale[0],
                     interpolation=cv2.INTER_LINEAR)
 
     # Pad the image so they can be divisible by a stride
@@ -235,15 +242,9 @@ def load_model(model_dir):
     return cfg, net, net_init
 
 
-def prepare_workspace(net, net_init, optimize=False): 
+def prepare_workspace(net, net_init): 
     workspace.ResetWorkspace()
     workspace.RunNetOnce(net_init)
-
-    if optimize: 
-        print('Optimizing memory usage...')
-        optim_proto = memonger.optimize_inference_for_dag(net, ["data"])
-        net = core.Net(optim_proto)
-
     workspace.CreateNet(net, input_blobs=['data'])
     return net
 
@@ -280,7 +281,7 @@ def main(args):
         cfg, net, net_init = load_model(args.model_dir)
 
     # Prepare workspace
-    net = prepare_workspace(net, net_init, optimize=args.do_optimize)
+    net = prepare_workspace(net, net_init)
 
     if os.path.isdir(args.im_or_folder):
         im_list = list(glob.iglob(args.im_or_folder + '/*.' + args.image_ext))

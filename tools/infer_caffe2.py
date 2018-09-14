@@ -191,7 +191,7 @@ def _retina_im_detect_box(cfg, im_shape, im_scale):
         pred_boxes = (
             box_utils.bbox_transform(boxes, box_deltas)
             if cfg.BBOX_REG else boxes)
-        pred_boxes /= im_scale
+        pred_boxes /= np.array([[im_scale[1], im_scale[0], im_scale[1], im_scale[0]]])
         pred_boxes = box_utils.clip_tiled_boxes(pred_boxes, im_shape)
         box_scores = np.zeros((pred_boxes.shape[0], 5))
         box_scores[:, 0:4] = pred_boxes
@@ -244,13 +244,19 @@ def _prepare_blob(cfg, im):
     im_shape = [im.shape[0], im.shape[1]]
 
     # Resize
-    im_scale = float(cfg.SCALE) / float(min(im_shape))
-    if np.round(im_scale * max(im_shape)) > cfg.MAX_SIZE:
-        im_scale = float(cfg.MAX_SIZE) / float(max(im_shape))
-    im = cv2.resize(im, None, None, fx=im_scale, fy=im_scale,
-                    interpolation=cv2.INTER_LINEAR)
+    if cfg.SQUASH: 
+        im_scale = float(cfg.SCALE) / np.array(im_shape[0:2], dtype=np.float32)
+    else: 
+        im_size_min = np.min(im_shape[0:2])
+        im_size_max = np.max(im_shape[0:2])
+        im_scale = float(cfg.SCALE) / float(im_size_min)
+        im_scale = np.array([im_scale, im_scale])
+        # Prevent the biggest axis from being more than max_size
+        if np.round(im_scale * im_size_max) > cfg.MAX_SIZE:
+            im_scale = float(cfg.MAX_SIZE) / float(im_size_max)
 
-    print(im.shape)
+    im = cv2.resize(im, None, None, fx=im_scale[1], fy=im_scale[0],
+                    interpolation=cv2.INTER_LINEAR)
 
     # Pad the image so they can be divisible by a stride
     stride = float(cfg.COARSEST_STRIDE)
