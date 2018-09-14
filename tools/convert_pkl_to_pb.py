@@ -42,7 +42,7 @@ import yaml
 from collections import defaultdict
 
 import caffe2.python.utils as putils
-from caffe2.python import core, workspace
+from caffe2.python import core, workspace, memonger
 from caffe2.proto import caffe2_pb2
 
 from detectron.core.config import assert_and_infer_cfg
@@ -106,6 +106,11 @@ def parse_args():
         choices=['simple', 'dag'],
         default='simple',
         type=str)
+    parser.add_argument(
+        '--optimize',
+        dest='do_optimize',
+        help='optimize execution graph to reduce memory usage',
+        action='store_true')
     parser.add_argument(
         '--use_nnpack', dest='use_nnpack',
         help='Use nnpack for conv',
@@ -813,6 +818,11 @@ def main():
 
     if args.device == 'gpu':
         [net, init_net] = convert_model_gpu(args, net, init_net)
+
+    if args.do_optimize: 
+        print('Optimizing memory usage...')
+        optim_proto = memonger.optimize_inference_for_dag(net, ["data"])
+        net = core.Net(optim_proto)
 
     net.Proto().name = args.net_name
     init_net.Proto().name = args.net_name + "_init"
