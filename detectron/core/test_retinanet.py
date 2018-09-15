@@ -174,7 +174,7 @@ def im_detect_bbox(model, im, timers=None):
         # do class specific nms here
 
         if cfg.TEST.SOFT_NMS.ENABLED:
-            nms_dets, _ = box_utils.soft_nms(
+            cls_dets, _ = box_utils.soft_nms(
                 cls_dets,
                 sigma=cfg.TEST.SOFT_NMS.SIGMA,
                 overlap_thresh=cfg.TEST.NMS,
@@ -183,9 +183,9 @@ def im_detect_bbox(model, im, timers=None):
             )
         else:
             keep = box_utils.nms(cls_dets, cfg.TEST.NMS)
+            cls_dets = cls_dets[keep, :]
 
-        cls_dets = cls_dets[keep, :]
-        out = np.zeros((len(keep), 6))
+        out = np.zeros((cls_dets.shape[0], 6))
         out[:, 0:5] = cls_dets
         out[:, 5].fill(cls)
         detections.append(out)
