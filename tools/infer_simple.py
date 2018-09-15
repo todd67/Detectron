@@ -164,7 +164,7 @@ def main(args):
                 'rest (caches and auto-tuning need to warm up)'
             )
 
-        if i >= args.num: 
+        if args.num and i >= args.num: 
             break
 
         if i == WARM_UP: 

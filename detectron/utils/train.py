@@ -53,6 +53,7 @@ def train_model():
     """Model training loop."""
     logger = logging.getLogger(__name__)
     model, weights_file, start_iter, checkpoints, output_dir = create_model()
+    
     if 'final' in checkpoints:
         # The final model was found in the output directory, so nothing to do
         return checkpoints
@@ -152,6 +153,10 @@ def create_model():
 
     logger.info('Building model: {}'.format(cfg.MODEL.TYPE))
     model = model_builder.create(cfg.MODEL.TYPE, train=True)
+
+    logger.info('Model saved to: {:s}'.format(os.path.abspath(output_dir)))
+    dump_proto_files(model, output_dir)
+
     if cfg.MEMONGER:
         optimize_memory(model)
     # Performs random weight initialization as defined by the model
@@ -176,6 +181,7 @@ def optimize_memory(model):
 def setup_model_for_training(model, weights_file, output_dir):
     """Loaded saved weights and create the network in the C2 workspace."""
     logger = logging.getLogger(__name__)
+
     add_model_training_inputs(model)
 
     if weights_file:
@@ -185,9 +191,6 @@ def setup_model_for_training(model, weights_file, output_dir):
     # parameters across GPUs
     nu.broadcast_parameters(model)
     workspace.CreateNet(model.net)
-
-    logger.info('Outputs saved to: {:s}'.format(os.path.abspath(output_dir)))
-    dump_proto_files(model, output_dir)
 
     # Start loading mini-batches and enqueuing blobs
     model.roi_data_loader.register_sigint_handler()

@@ -172,7 +172,18 @@ def im_detect_bbox(model, im, timers=None):
     for cls, boxes in boxes_all.items():
         cls_dets = np.vstack(boxes).astype(dtype=np.float32)
         # do class specific nms here
-        keep = box_utils.nms(cls_dets, cfg.TEST.NMS)
+
+        if cfg.TEST.SOFT_NMS.ENABLED:
+            nms_dets, _ = box_utils.soft_nms(
+                cls_dets,
+                sigma=cfg.TEST.SOFT_NMS.SIGMA,
+                overlap_thresh=cfg.TEST.NMS,
+                score_thresh=0.0001,
+                method=cfg.TEST.SOFT_NMS.METHOD
+            )
+        else:
+            keep = box_utils.nms(cls_dets, cfg.TEST.NMS)
+
         cls_dets = cls_dets[keep, :]
         out = np.zeros((len(keep), 6))
         out[:, 0:5] = cls_dets
